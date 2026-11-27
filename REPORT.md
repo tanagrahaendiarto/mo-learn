@@ -445,5 +445,194 @@ Frontend sudah siap menerima Slice 2 tanpa redesign besar:
   handbook (AI material assistance wajib dinyatakan di README &
   proposal).
 
+## 15. Sprint Frontend Learning Exploration (Tasks A–G)
+
+Branch: `feat/frontend-learning-exploration`, bercabang dari `master` @ `ae4e9fa`.
+Lingkup: Collection, Profile, Glossary + bantuan, Relationship Explorer,
+template Gene, modul eksplorasi, Study Companion. P0 dikerjakan lebih dulu.
+
+### 15.1 Catatan kesenjangan dokumen
+
+PRD v1.1 tidak ada di working tree (`docs/` tidak memuat berkas tersebut).
+Implementasi mengikuti lingkup yang disetujui di percakapan + kontrak backend
+Slice 1 yang sudah berjalan. Tidak ada persyaratan PRD yang ditambahkan atau
+diklaim tanpa bukti. Bila PRD v1.1 tersedia, bagian ini perlu direkonsiliasi.
+
+### 15.2 Prinsip integritas ilmiah yang diterapkan
+
+| Aturan | Implementasi |
+|---|---|
+| Tidak mengarang lokalisasi/fungsi/sekuens/relasi | `mapProfile` hanya memetakan field backend; field `lokasi` karangan dihapus |
+| Bedakan anotasi sumber vs penjelasan pemula | Bagian "In simple terms" memakai `summary` tervalidasi; bila kosong tampil pesan jujur, bukan teks buatan |
+| Relasi hanya yang terbukti | Label selalu `cross-reference` + `source` + `evidence`; tidak disimpulkan dari kemiripan simbol |
+| Tidak ada jawaban AI tiruan | Study Companion 100% nonaktif, tanpa API key, tanpa respons palsu |
+| Provenance tidak ditebak | Record lama tanpa `source` tampil `Unknown source`, tidak pernah otomatis "Demo" |
+
+### 15.3 Task A — Collection
+
+- Identitas kanonik: `type + source namespace + id` (`collectionKey()`).
+- `add()` menolak duplikat; `has()` dipakai untuk status tombol;
+  `remove(type, source, id)` menghapus record yang tepat.
+- `normalizeSource()` menyeragamkan string backend (`uniprot` → `UniProt`).
+- Record legacy tanpa `source`: dipertahankan, ditandai
+  `UNKNOWN_SOURCE_LABEL` ("Unknown source"), **tidak** dilabeli demo.
+- Halaman koleksi kini menampilkan organism, identifier, `SourceBadge`,
+  dan badge `Demo` hanya saat `isDemo === true`.
+
+### 15.4 Task B — Profile protein
+
+Struktur baru (menggantikan `profile.sections` berbahasa Indonesia):
+
+1. Identitas + organism + source + status Reviewed/Unreviewed (dengan tooltip).
+2. "In simple terms" — `summary` sumber atau pesan "belum tersedia".
+3. "Biological function" — anotasi verbatim dari `function_annotations`.
+4. "Source & evidence" — tautan `source_url`/UniProt.
+5. "Advanced details" — length, taxonomy ID, review status.
+6. "Related entities" — Relationship Explorer.
+7. "Exploration modules" — status jujur per modul.
+8. "Save to Collection" — tombol toggle `aria-pressed`.
+9. "Study Companion" — antarmuka kontekstual, ditandai Unavailable.
+
+`EntityProfile.sections` dihapus dari tipe; halaman tidak lagi memakai field
+Indonesia. `mapProfile` tidak lagi menghasilkan `lokasi` ("Cytoplasm, nucleus,
+or membrane") yang tidak berasal dari backend.
+
+### 15.5 Task C — Glossary + bantuan kontekstual
+
+`HelpTooltip` baru: tombol `?` dengan `aria-describedby`, tooltip
+`role="tooltip"` tampil saat hover **dan** focus-within (jalur keyboard),
+tanpa JavaScript tambahan. Dipasang pada istilah glosarium dan pada
+Reviewed/Unreviewed di profil.
+
+Istilah glosarium ditambah: Hormone, GeneID, Organism, Taxonomy ID, Amino acid,
+Reviewed entry, Unreviewed entry, Cross-reference, Gene–protein relationship,
+Biological sequence, Experimental structure, Predicted structure.
+
+### 15.6 Task D — Relationship Explorer
+
+- Model data `RelationshipNode`/`RelationshipEdge`/`RelationshipGraph`
+  **independen dari visualisasi**.
+- `buildCrossrefGraph()` membangun graf dari `gene_crossrefs` backend;
+  label `cross-reference`, sumber namespace, dan evidence eksplisit.
+- Visualisasi: SVG ringan (lingkaran + garis + label), bukan Cytoscape.js —
+  dependensi tidak terpasang dan interaksi yang dibutuhkan minimal.
+- **Fallback aksesibel**: daftar relasi selalu dirender; setiap node adalah
+  tautan profil, sehingga seluruh informasi dapat diakses tanpa SVG/pointer.
+- Node terpilih menampilkan nama, identifier, organism, dan penanda demo.
+
+### 15.7 Task E — Template Gene
+
+`GeneProfile` adalah komponen template yang dapat dipakai ulang untuk
+integrasi NCBI Gene (Slice 2): identitas, About, Gene function, Related
+proteins, Sinonim, lokasi kromosomal, Source & evidence. Field yang tidak
+tersedia menampilkan "not available yet".
+
+- Mode demo: `/entity/gene/HGNC%3A11998` merender template dengan badge `Demo`.
+- Mode live: tetap "Coming Soon" — tidak ada endpoint gene, jadi tidak ada
+  data yang dikarang.
+
+### 15.8 Task F — Modul eksplorasi
+
+`ExplorationModules` mendukung lima status jujur: `available`, `loading`,
+`empty`, `unavailable`, `provider-error`.
+
+| Modul | Status | Dasar |
+|---|---|---|
+| Sequence | `available` bila `length` ada (hanya metadata panjang; sekuens penuh tidak dimuat) | field backend |
+| Export CSV | `available` | data ternormalisasi entitas |
+| Structure, ligands, interactions, literature | `unavailable` | belum ada sumber data |
+
+Export CSV memakai `src/lib/csv.ts`: escape RFC-4180 (kutip ganda, koma,
+CRLF) dan **atribusi sumber wajib** ditampilkan di kartu sebelum unduh.
+Tidak ada modul yang menampilkan data contoh sebagai data nyata.
+
+### 15.9 Task G — Study Companion
+
+Komponen antarmuka kontekstual: konteks entitas, pertanyaan saran, area
+input, area respons, dan area sitasi — semuanya `disabled` dan ditandai
+`Unavailable`. Tidak ada LLM, tidak ada kunci API di kode, tidak ada jawaban
+tiruan. Siap dihubungkan ke endpoint server-side pada Slice 2.
+
+### 15.10 Pengujian
+
+| Pengujian | Perintah | Hasil |
+|---|---|---|
+| Typecheck | `npm run typecheck` | ✅ exit 0 |
+| Lint | `npm run lint` | ✅ No issues found |
+| Build produksi | `npm run build` | ✅ exit 0 (6 rute statis/dinamis seperti sebelumnya) |
+| Regresi lama | `npm run test:regression` | ✅ 73/73 lulus |
+| Regresi learning (live) | `npm run test:learning` (backend live) | ✅ seluruh cek lulus |
+| Regresi learning (demo) | `LEARNING_DEMO=true` terhadap server demo | ✅ seluruh cek lulus |
+| Semgrep | `semgrep --config p/security-audit` | ✅ 22 rules, 0 findings |
+| Responsif | Playwright 1440×900 / 768×1024 / 390×844 | ✅ 0 overflow, 0 heading terpotong |
+| Screenshot | `npm run capture:screenshots` | ✅ 18 live + 18 demo di `frontend/screenshots/` |
+
+Cakupan skrip baru `tests/learning-exploration.mjs`:
+
+- Collection: simpan, persist setelah reload, tepat satu record (dedup),
+  tampilan identifier/organism/source, navigasi ke profil, hapus.
+- Record legacy: dipertahankan, `Unknown source`, **tidak** dilabeli Demo.
+- Profil: sembilan bagian ada; tidak ada lokalisasi karangan.
+- Relationship: label, evidence, daftar aksesibel, detail node terpilih.
+- Modul: status `Unavailable` tampil, tombol `Download CSV` tersedia.
+- Glosarium: 16 istilah wajib.
+- Gene: template demo lengkap + tautan protein; live tetap "Coming Soon".
+- Responsif: 3 viewport × 4 rute.
+
+### 15.11 Batasan yang tetap berlaku
+
+- Sequence module hanya metadata panjang; sekuens penuh belum dimuat.
+- Structure/ligands/interactions/literature tetap `unavailable` sampai ada
+  sumber data tervalidasi.
+- Template Gene belum tersambung ke backend; hanya dipakai di mode demo.
+- Study Companion belum berfungsi tanpa endpoint server-side.
+- Cytoscape.js tidak dipakai; SVG cukup untuk graf kecil dan menjaga
+  dependensi tetap minimal. Model data siap bila nanti diperlukan.
+- Graphify diperbarui (`508 nodes, 1036 edges, 17 communities`); pelabelan
+  komunitas semantik tetap butuh kuota LLM.
+
+### 15.12 Status git
+
+| Item | Status |
+|---|---|
+| Branch | `feat/frontend-learning-exploration` |
+| Base | `master` @ `ae4e9fa` |
+| Commit/push | **Belum** — menunggu persetujuan |
+| Modified | 7 file frontend |
+| New | 11 komponen/lib + 2 skrip uji |
+| `backend/` dan `docs/` | 0 perubahan |
+
+### 15.13 Tindak lanjut UAT (presentasi konten profil)
+
+Perbaikan terarah pada profil protein, tanpa redesign halaman lain:
+
+- **Judul utama = nama protein**; simbol gen ditampilkan terpisah dengan
+  label `Gene symbol` agar identitas gen dan protein tidak tertukar.
+  Metadata `<title>` memakai `Nama (SIMBOL)`.
+- **Anotasi UniProt panjang** dipindah ke `<details>` "Original scientific
+  annotation" (native, keyboard-accessible) beserta jumlah catatan/referensi.
+- **Sitasi PubMed** diekstrak dari paragraf oleh `src/lib/citations.ts`
+  menjadi daftar tautan `PubMed <id>` ke
+  `https://pubmed.ncbi.nlm.nih.gov/<id>/`. Teks anotasi tetap verbatim
+  selain pemindahan penanda sitasi; provenance ditulis eksplisit
+  ("Unedited text from UniProt").
+- **`ExplanationPanel`** baru = tata letak reusable untuk penjelasan pemula
+  + "Key biological functions". Keduanya hanya terisi data tervalidasi;
+  saat kosong tampil status jujur, tanpa ringkasan buatan.
+- **`Homo sapiens` dicetak miring** (`<em>`) di profil protein dan template
+  gen.
+- Desain, koleksi, integrasi API, dan layout responsif tidak berubah.
+
+Regresi: typecheck 0, lint 0, build 0; `tests/learning-exploration.mjs`
+diperluas (h1 = nama protein, simbol gen terpisah, organisme italic,
+prosa anotasi utuh, tanpa `PubMed:` inline, 18 tautan PubMed valid,
+`<details>` + provenance). Hasil live 73/73; regresi lama 73/73.
+Screenshot UAT: `uat-profile-desktop`, `uat-profile-annotations`,
+`uat-profile-mobile`.
+
+**Status UAT:** disetujui. Tidak ada perubahan UI lanjutan setelah persetujuan;
+sisa batasan tercatat di §15.11.
+
 ---
+
 *Laporan ini dibuat dalam Bahasa Indonesia sesuai ketentuan tugas.*

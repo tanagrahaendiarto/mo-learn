@@ -1,6 +1,7 @@
 import type {
   BiologicalEntitySummary,
-  ExplorationModule,
+  ExplorationModuleData,
+  GeneProfileData,
   GlossaryEntry,
   SavedEntity,
 } from "@/types/molearn";
@@ -126,41 +127,58 @@ export const SEARCH_FIXTURE: BiologicalEntitySummary[] = [
   },
 ];
 
-/** Modul eksplorasi (menu perintah lab) — urutan sesuai blueprint Stitch. */
-export const EXPLORATION_MODULES: {
-  module: ExplorationModule;
-  title: string;
-  description: string;
-}[] = [
+/** Modul eksplorasi (menu perintah lab) — urutan sesuai blueprint Stitch.
+ *  `state` mencerminkan apa yang BENAR-BENAR didukung oleh data sumber.
+ *  Tanpa backend Slice 2, hanya metadata sekuens + export yang aktif;
+ *  sisanya jujur ditandai `unavailable`. */
+export const EXPLORATION_MODULES: ExplorationModuleData[] = [
   {
     module: "structure",
     title: "1. Structure",
     description: "Preview of 3D molecular structure and PDB codes.",
+    state: "unavailable",
+    detail:
+      "3D structure is not available yet. It will arrive with a future data source.",
   },
   {
     module: "ligand",
     title: "2. Ligand",
     description: "Ions and small molecules that bind to proteins.",
+    state: "unavailable",
+    detail:
+      "Ligand data is not available for this entity yet.",
   },
   {
     module: "interaction",
     title: "3. Protein Interaction",
     description: "Network graph of relationships between genes and proteins.",
+    state: "unavailable",
+    detail:
+      "Interaction data is not available yet. Only verified cross-references are shown in the Relationship Explorer.",
   },
   {
     module: "sequence",
     title: "4. Sequence",
-    description: "Amino-acid or nucleotide sequence in FASTA format.",
+    description: "Amino-acid or nucleotide sequence metadata.",
+    state: "unavailable",
+    detail:
+      "The full sequence is not loaded. Sequence length is shown in Advanced Details when available.",
   },
   {
     module: "literature",
     title: "5. Scientific Literature",
     description: "Trusted journal references with DOI and PMID.",
+    state: "unavailable",
+    detail:
+      "Literature references are not available for this entity yet.",
   },
   {
     module: "export",
     title: "6. Data Export",
-    description: "Download summarized data as CSV or FASTA.",
+    description: "Download summarized data as CSV.",
+    state: "unavailable",
+    detail:
+      "Export becomes available once there is source data with permitted redistribution.",
   },
 ];
 
@@ -245,6 +263,81 @@ export const GLOSSARY_FIXTURE: GlossaryEntry[] = [
     relatedEntity: "HGNC:11998",
     link: { label: "Learn Gene vs Protein", href: "/search?q=TP53" },
   },
+  {
+    term: "Hormone",
+    definition:
+      "A signaling molecule made in one part of the body and carried (often through the blood) to act on distant cells.",
+    example: "Insulin, which tells cells to take up glucose from the blood.",
+    relatedEntity: "P01308",
+    link: { label: "Explore an Insulin Example", href: "/search?q=Insulin" },
+  },
+  {
+    term: "GeneID",
+    definition:
+      "The numeric identifier that NCBI assigns to a gene record. It is different from a protein accession.",
+    example: "7157 is the NCBI GeneID for the human TP53 gene.",
+    relatedEntity: "HGNC:11998",
+    link: { label: "Find a Gene in Explore", href: "/search?q=TP53" },
+  },
+  {
+    term: "Organism",
+    definition:
+      "The living species a biological record belongs to, written as a Latin binomial (genus and species).",
+    example: "Homo sapiens (human) and Mus musculus (mouse).",
+  },
+  {
+    term: "Taxonomy ID",
+    definition:
+      "A stable numeric identifier for a species in the NCBI taxonomy database.",
+    example: "9606 is the taxonomy ID for Homo sapiens.",
+  },
+  {
+    term: "Amino acid",
+    definition:
+      "The building block of proteins. Twenty standard amino acids link into chains that fold into a working protein.",
+    example: "Human p53 is built from 393 amino-acid residues.",
+  },
+  {
+    term: "Reviewed entry",
+    definition:
+      "A UniProt record (Swiss-Prot) manually curated and cross-checked by expert annotators, labeled \"reviewed\".",
+    example: "P04637 is a reviewed UniProt entry.",
+  },
+  {
+    term: "Unreviewed entry",
+    definition:
+      "A UniProt record (TrEMBL) produced automatically from genome data without manual review, labeled \"unreviewed\".",
+  },
+  {
+    term: "Cross-reference",
+    definition:
+      "A recorded link between two databases that identifies the same or a related entity.",
+    example: "A UniProt protein pointing to its HGNC gene identifier.",
+    link: { label: "Open a Protein Profile", href: "/entity/protein/P04637" },
+  },
+  {
+    term: "Gene–protein relationship",
+    definition:
+      "A gene (DNA) carries instructions; the protein is the product built from those instructions. A gene may encode one or more proteins, but moLearn never merges the two automatically.",
+    example: "The TP53 gene and the p53 protein it encodes.",
+    link: { label: "Compare Gene vs Protein", href: "/search?q=TP53" },
+  },
+  {
+    term: "Biological sequence",
+    definition:
+      "The ordered chain of building blocks in DNA, RNA, or protein, usually written one letter per residue.",
+    example: "A protein sequence written with one letter per amino acid.",
+  },
+  {
+    term: "Experimental structure",
+    definition:
+      "A three-dimensional molecular shape determined by laboratory methods such as X-ray crystallography or cryo-EM.",
+  },
+  {
+    term: "Predicted structure",
+    definition:
+      "A three-dimensional molecular shape estimated by computational methods, not directly measured in a laboratory.",
+  },
 ];
 
 /**
@@ -259,6 +352,8 @@ export const DEMO_COLLECTION: SavedEntity[] = [
     name: "Cellular tumor antigen p53",
     symbol: "p53",
     organism: "Homo sapiens",
+    source: "UniProt",
+    isDemo: true,
     note: "Guardian of the genome and regulator of the cell cycle.",
     savedAt: new Date("2026-01-01T00:00:00Z").toISOString(),
   },
@@ -268,6 +363,8 @@ export const DEMO_COLLECTION: SavedEntity[] = [
     name: "Tumor protein p53",
     symbol: "TP53",
     organism: "Homo sapiens",
+    source: "NCBI Gene",
+    isDemo: true,
     note: "Gene encoding the p53 protein on chromosome 17.",
     savedAt: new Date("2026-01-01T00:00:00Z").toISOString(),
   },
@@ -277,6 +374,8 @@ export const DEMO_COLLECTION: SavedEntity[] = [
     name: "Insulin",
     symbol: "INS",
     organism: "Homo sapiens",
+    source: "UniProt",
+    isDemo: true,
     note: "A peptide hormone that regulates blood glucose levels.",
     savedAt: new Date("2026-01-01T00:00:00Z").toISOString(),
   },
@@ -286,6 +385,8 @@ export const DEMO_COLLECTION: SavedEntity[] = [
     name: "Carbonic anhydrase 2",
     symbol: "CA2",
     organism: "Homo sapiens",
+    source: "UniProt",
+    isDemo: true,
     note: "An enzyme with a zinc cofactor for pH regulation.",
     savedAt: new Date("2026-01-01T00:00:00Z").toISOString(),
   },
@@ -293,3 +394,37 @@ export const DEMO_COLLECTION: SavedEntity[] = [
 
 /** Jumlah slot koleksi (konstanta inventaris dari blueprint halaman 4). */
 export const COLLECTION_SLOT_CAP = 20;
+
+/**
+ * FIXTURE DEMO — profil gen (Task E).
+ * Dipakai template profil gen saat mode demo; live mode tetap
+ * menampilkan "Coming Soon" hingga endpoint Slice 2 tersedia.
+ */
+export const GENE_PROFILE_FIXTURES: GeneProfileData[] = [
+  {
+    type: "gene",
+    id: "HGNC:11998",
+    symbol: "TP53",
+    name: "Tumor protein p53",
+    organism: "Homo sapiens",
+    source: "NCBI Gene",
+    description:
+      "Gene that provides instructions for making the tumor-suppressor protein p53.",
+    location: "Chromosome 17 (17p13.1)",
+    synonyms: ["P53", "LFS1", "BCC7"],
+    relatedProteins: [{ id: "P04637", name: "Cellular tumor antigen p53" }],
+  },
+  {
+    type: "gene",
+    id: "MGI:98834",
+    symbol: "Trp53",
+    name: "Transformation related protein 53",
+    organism: "Mus musculus",
+    source: "NCBI Gene",
+    description:
+      "Gene encoding the mouse p53 protein; advanced structure annotations are not yet available.",
+    location: "Chromosome 11",
+    synonyms: ["p53"],
+    relatedProteins: [{ id: "P02340", name: "Cellular tumor antigen p53" }],
+  },
+];

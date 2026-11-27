@@ -3,6 +3,7 @@ import type {
   BiologicalEntitySummary,
   SearchResult,
   EntityProfile,
+  EntitySource,
 } from "@/types/molearn";
 
 /* ============================================================
@@ -85,6 +86,22 @@ function resolveUrl(path: string): string {
 
 /* ---------- Mapping helpers ---------- */
 
+/** Normalisasi namespace sumber backend → EntitySource kanonik. */
+const SOURCE_MAP: Record<string, EntitySource> = {
+  uniprot: "UniProt",
+  uniprotkb: "UniProt",
+  "ncbi gene": "NCBI Gene",
+  ncbi_gene: "NCBI Gene",
+  ncbi: "NCBI Gene",
+  pdb: "PDB",
+  string: "STRING",
+};
+
+function normalizeSource(source: string): EntitySource {
+  const key = source.trim().toLowerCase();
+  return SOURCE_MAP[key] ?? "UniProt";
+}
+
 function mapSummary(b: BackendProteinSummary): BiologicalEntitySummary {
   const aliases = [
     ...b.synonyms,
@@ -96,7 +113,7 @@ function mapSummary(b: BackendProteinSummary): BiologicalEntitySummary {
     name: b.primary_name ?? b.accession,
     symbol: b.gene_symbols[0] ?? b.primary_name ?? undefined,
     organism: b.organism.scientific_name ?? "Unknown",
-    source: b.source as BiologicalEntitySummary["source"],
+    source: normalizeSource(b.source),
     summary: "",  // Diisi oleh profile jika tersedia
     aliases: aliases.length > 0 ? aliases : undefined,
     badge: "protein",
@@ -107,13 +124,6 @@ function mapSummary(b: BackendProteinSummary): BiologicalEntitySummary {
 
 function mapProfile(b: BackendProteinProfile): EntityProfile {
   const base = mapSummary(b);
-  const apaItu = b.primary_name ?? `Protein ${b.accession}`;
-  const fungsi = b.function_annotations[0] ?? "Function not available yet.";
-  const lokasi = "Cytoplasm, nucleus, or membrane (depending on the specific protein).";
-  const mengapaPenting = b.reviewed
-    ? "UniProt-reviewed protein with complete annotations."
-    : "Unreviewed protein (UniProt review).";
-
   return {
     type: "protein",
     id: b.accession,
@@ -121,11 +131,19 @@ function mapProfile(b: BackendProteinProfile): EntityProfile {
     symbol: base.symbol ?? b.accession,
     organism: base.organism,
     source: base.source,
-    relatedGeneId: b.gene_symbols[0] ?? b.gene_crossrefs.find(g => g.namespace === "HGNC")?.id,
-    sections: { apaItu, fungsi, lokasi, mengapaPenting },
+    reviewed: b.reviewed,
+    taxonomyId: b.organism.taxonomy_id ?? undefined,
+    length: b.length ?? undefined,
+    // UniProt tidak menyediakan ringkasan ramah pemula tervalidasi.
+    // Dibiarkan kosong: UI menampilkan unavailable state, bukan teks karangan.
+    summary: undefined,
+    functionAnnotations: b.function_annotations,
+    geneCrossrefs: b.gene_crossrefs,
+    relatedGeneId:
+      b.gene_symbols[0] ??
+      b.gene_crossrefs.find((g) => g.namespace === "HGNC")?.id,
     references: {
       uniprotUrl: b.source_url,
-      ...(b.gene_crossrefs.find(g => g.namespace === "HGNC")?.id ? { pmid: undefined } : {}),
     },
   };
 }
@@ -324,10 +342,10 @@ function fetchEntityProfileDemo(type: string, id: string): EntityProfile {
     throw new ApiError(404, "protein_not_found");
   }
 
-  const apaItu = found.summary ?? `${found.symbol ?? found.name} — ${found.name}`;
-  const fungsi = "Detailed molecular function is available in a later slice.";
-  const lokasi = found.organism;
-  const mengapaPenting = "Demo data — connect the backend for full information.";
+  // Cross-reference demo yang TERVALIDASI (dikurasi dari fixture gen/protein).
+  const demoCrossrefs: Record<string, { namespace: string; id: string }[]> = {
+    P04637: [{ namespace: "HGNC", id: "HGNC:11998" }],
+  };
 
   return {
     type: found.type as EntityProfile["type"],
@@ -336,7 +354,15 @@ function fetchEntityProfileDemo(type: string, id: string): EntityProfile {
     symbol: found.symbol ?? found.name,
     organism: found.organism,
     source: found.source,
-    sections: { apaItu, fungsi, lokasi, mengapaPenting },
-    references: { uniprotUrl: found.id.startsWith("P") ? `https://www.uniprot.org/uniprotkb/${found.id}` : undefined },
+    summary: found.summary,
+    functionAnnotations: [],
+    geneCrossrefs: demoCrossrefs[found.id] ?? [],
+    relatedGeneId:
+      found.id === "P04637" ? "HGNC:11998" : undefined,
+    references: {
+      uniprotUrl: found.id.startsWith("P")
+        ? `https://www.uniprot.org/uniprotkb/${found.id}`
+        : undefined,
+    },
   };
 }

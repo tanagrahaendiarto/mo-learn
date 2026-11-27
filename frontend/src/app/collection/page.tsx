@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ENTITY_TYPE_LABELS, type EntityType } from "@/types/molearn";
+import {
+  ENTITY_TYPE_LABELS,
+  UNKNOWN_SOURCE_LABEL,
+  type EntityType,
+} from "@/types/molearn";
 import { useCollection } from "@/lib/use-collection";
 import { DEMO_COLLECTION, COLLECTION_SLOT_CAP } from "@/data/fixtures";
+import { SourceBadge } from "@/components/SourceBadge";
 import {
   IconMagnifier,
   IconCollectionGene,
@@ -132,18 +137,43 @@ export default function CollectionPage() {
                         <IconCollectionProtein className="h-6 w-6" />
                       )}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h2 className="font-headline text-headline-sm text-on-surface-card">
                         {it.name}
                       </h2>
                       <p className="font-mono text-mono-sm text-primary">
-                        {it.symbol ?? it.id} {it.id}
+                        {it.symbol ?? it.id} • {it.id}
                       </p>
                     </div>
                   </div>
-                  <p className="font-body text-body-sm text-on-surface-variant">
-                    {it.note ?? it.organism}
-                  </p>
+                  <dl className="flex flex-col gap-xs font-body text-body-sm text-on-surface-variant">
+                    <div>
+                      <dt className="sr-only">Organism</dt>
+                      <dd>{it.organism}</dd>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-xs">
+                      <dt className="sr-only">Source</dt>
+                      <dd>
+                        {it.source ? (
+                          <SourceBadge source={it.source} />
+                        ) : (
+                          <span className="rounded-md border border-outline-subtle bg-surface px-sm py-xs font-label text-label-sm text-on-surface-variant">
+                            {UNKNOWN_SOURCE_LABEL}
+                          </span>
+                        )}
+                      </dd>
+                      {it.isDemo && (
+                        <span className="rounded-md border border-outline-subtle bg-amber-container px-sm py-xs font-label text-label-sm text-on-amber-container">
+                          Demo
+                        </span>
+                      )}
+                    </div>
+                  </dl>
+                  {it.note && (
+                    <p className="font-body text-body-sm text-on-surface-variant">
+                      {it.note}
+                    </p>
+                  )}
                 </div>
               </div>
               <footer className="flex items-center justify-between gap-sm border-t border-outline-subtle bg-surface px-lg py-sm">
@@ -155,7 +185,7 @@ export default function CollectionPage() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => remove(it.type, it.id)}
+                  onClick={() => remove(it.type, it.source, it.id)}
                   className="rounded-md border border-outline-subtle bg-surface-card px-sm py-xs font-label text-label-sm text-error hover:bg-error-container"
                 >
                   Remove
