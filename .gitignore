@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.eggs/
+*.egg-info/
+
+# Lockfiles (use uv sync, don't version uv.lock)
+uv.lock
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets / tokens
+*.env
+.env.*
+
+# Scratch / cache
+*.log
+*.tmp
