@@ -1,7 +1,7 @@
 import type {
   BiologicalEntitySummary,
   ExplorationModuleData,
-  GeneProfileData,
+  GeneEntityProfile,
   GlossaryEntry,
   SavedEntity,
 } from "@/types/molearn";
@@ -20,7 +20,7 @@ import type {
 export const FEATURED_ENTITIES: BiologicalEntitySummary[] = [
   {
     type: "gene",
-    id: "HGNC:11998",
+    id: "7157",
     symbol: "TP53",
     name: "Tumor protein p53",
     organism: "Homo sapiens",
@@ -95,7 +95,7 @@ export const SEARCH_FIXTURE: BiologicalEntitySummary[] = [
   },
   {
     type: "gene",
-    id: "HGNC:11998",
+    id: "7157",
     symbol: "TP53",
     name: "Tumor protein p53",
     organism: "Homo sapiens",
@@ -116,7 +116,7 @@ export const SEARCH_FIXTURE: BiologicalEntitySummary[] = [
   },
   {
     type: "gene",
-    id: "MGI:98834",
+    id: "22059",
     symbol: "Trp53",
     name: "Transformation related protein 53",
     organism: "Mus musculus",
@@ -213,7 +213,7 @@ export const GLOSSARY_FIXTURE: GlossaryEntry[] = [
     definition:
       "A segment of DNA carrying the genetic instructions to make a functional RNA or a specific protein.",
     example: "The TP53 gene on human chromosome 17.",
-    relatedEntity: "HGNC:11998",
+    relatedEntity: "7157",
     link: { label: "Find a Gene in Explore", href: "/search?q=TP53" },
   },
   {
@@ -260,7 +260,7 @@ export const GLOSSARY_FIXTURE: GlossaryEntry[] = [
     definition:
       "An RNA molecule copied (transcribed) from a DNA gene before it is translated into a protein.",
     example: "The TP53 mRNA that is translated into p53.",
-    relatedEntity: "HGNC:11998",
+    relatedEntity: "7157",
     link: { label: "Learn Gene vs Protein", href: "/search?q=TP53" },
   },
   {
@@ -276,7 +276,7 @@ export const GLOSSARY_FIXTURE: GlossaryEntry[] = [
     definition:
       "The numeric identifier that NCBI assigns to a gene record. It is different from a protein accession.",
     example: "7157 is the NCBI GeneID for the human TP53 gene.",
-    relatedEntity: "HGNC:11998",
+    relatedEntity: "7157",
     link: { label: "Find a Gene in Explore", href: "/search?q=TP53" },
   },
   {
@@ -359,7 +359,7 @@ export const DEMO_COLLECTION: SavedEntity[] = [
   },
   {
     type: "gene",
-    id: "HGNC:11998",
+    id: "7157",
     name: "Tumor protein p53",
     symbol: "TP53",
     organism: "Homo sapiens",
@@ -397,34 +397,58 @@ export const COLLECTION_SLOT_CAP = 20;
 
 /**
  * FIXTURE DEMO — profil gen (Task E).
- * Dipakai template profil gen saat mode demo; live mode tetap
- * menampilkan "Coming Soon" hingga endpoint Slice 2 tersedia.
+ * Bentuk data mengikuti kontrak NCBI Gene slice 2; hanya dipakai saat
+ * mode demo dan selalu ditandai "Demo" di UI.
  */
-export const GENE_PROFILE_FIXTURES: GeneProfileData[] = [
+export const GENE_PROFILE_FIXTURES: GeneEntityProfile[] = [
   {
     type: "gene",
-    id: "HGNC:11998",
+    id: "7157",
     symbol: "TP53",
     name: "Tumor protein p53",
     organism: "Homo sapiens",
     source: "NCBI Gene",
+    taxonomyId: 9606,
     description:
       "Gene that provides instructions for making the tumor-suppressor protein p53.",
-    location: "Chromosome 17 (17p13.1)",
+    chromosome: "17p13.1",
+    geneType: "protein-coding",
     synonyms: ["P53", "LFS1", "BCC7"],
-    relatedProteins: [{ id: "P04637", name: "Cellular tumor antigen p53" }],
+    crossReferences: [
+      { namespace: "HGNC", id: "HGNC:11998" },
+      { namespace: "Ensembl", id: "ENSG00000141510" },
+      { namespace: "MIM", id: "191170" },
+    ],
+    relatedProteins: ["antigen NY-CO-13", "phosphoprotein p53", "tumor protein 53"],
+    proteinLinks: [
+      {
+        accession: "P04637",
+        primaryName: "Cellular tumor antigen p53",
+        geneSymbols: ["TP53"],
+        reviewed: true,
+        source: "UniProt",
+        sourceUrl: "https://www.uniprot.org/uniprotkb/P04637",
+        evidence: "uniprot_geneid_crossref",
+      },
+    ],
+    sourceUrl: "https://www.ncbi.nlm.nih.gov/gene/7157",
   },
   {
     type: "gene",
-    id: "MGI:98834",
+    id: "22059",
     symbol: "Trp53",
     name: "Transformation related protein 53",
     organism: "Mus musculus",
     source: "NCBI Gene",
+    taxonomyId: 10090,
     description:
       "Gene encoding the mouse p53 protein; advanced structure annotations are not yet available.",
-    location: "Chromosome 11",
+    chromosome: "11",
+    geneType: "protein-coding",
     synonyms: ["p53"],
-    relatedProteins: [{ id: "P02340", name: "Cellular tumor antigen p53" }],
+    crossReferences: [{ namespace: "MGI", id: "MGI:98834" }],
+    relatedProteins: ["Cellular tumor antigen p53"],
+    proteinLinks: [],
+    sourceUrl: "https://www.ncbi.nlm.nih.gov/gene/22059",
   },
 ];

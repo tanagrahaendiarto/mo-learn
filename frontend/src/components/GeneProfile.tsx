@@ -1,47 +1,82 @@
-import Link from "next/link";
-import type { GeneProfileData } from "@/types/molearn";
+import type {
+  ExplorationModuleData,
+  GeneEntityProfile,
+  RelationshipGraph,
+} from "@/types/molearn";
+import type { ExportConfig } from "@/components/ExplorationModules";
 import { EntityBadge } from "@/components/EntityBadge";
 import { SourceBadge } from "@/components/SourceBadge";
 import { PixelCard } from "@/components/PixelCard";
 import { SaveToCollection } from "@/components/SaveToCollection";
+import { ExplanationPanel } from "@/components/ExplanationPanel";
+import { ScientificAnnotation } from "@/components/ScientificAnnotation";
+import { RelationshipExplorer } from "@/components/RelationshipExplorer";
+import { ExplorationModules } from "@/components/ExplorationModules";
+import { StudyCompanion } from "@/components/StudyCompanion";
 
 /**
- * GeneProfile — template profil gen yang dapat dipakai ulang (Task E).
+ * GeneProfile — profil gen NCBI Gene (slice 2).
  *
- * Ditujukan untuk integrasi NCBI Gene di Slice 2. Semua field yang
- * belum tersedia menampilkan fallback jujur ("Not available"), tidak
- * pernah mengarang. Live mode tetap menampilkan "Coming Soon" sampai
- * endpoint Slice 2 ada; template ini dipakai saat mode demo.
+ * Semua field berasal dari respons backend. Field yang tidak dikirim
+ * sumber (description/chromosome/gene_type) tampil sebagai "not available",
+ * tidak pernah diisi tebakan. NCBI summary ditampilkan sebagai anotasi
+ * sumber mentah, bukan penjelasan pemula tervalidasi.
  */
-
 function Unavailable({ label }: { label: string }) {
   return (
     <p className="font-body text-body-sm text-on-surface-variant">
-      {label} — not available yet.
+      {label} — not available from NCBI Gene.
     </p>
   );
 }
 
-export function GeneProfile({ gene }: { gene: GeneProfileData }) {
+export function GeneProfile({
+  gene,
+  graph,
+  modules,
+  exportConfig,
+  isDemo,
+}: {
+  gene: GeneEntityProfile;
+  graph: RelationshipGraph;
+  modules: ExplorationModuleData[];
+  exportConfig?: ExportConfig;
+  isDemo?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-lg">
-      {/* Identity + organism + source */}
+      {/* 1. Identity + organism + source */}
       <section className="flex flex-col gap-sm">
         <div className="flex flex-wrap items-center gap-sm">
           <EntityBadge type="gene" />
           <h1 className="font-headline text-headline-lg-mobile text-on-surface md:text-headline-lg">
-            {gene.symbol}
+            {gene.symbol || gene.name}
           </h1>
-          {/* Template dipakai hanya saat mode demo → tandai sebagai demo. */}
-          <span className="rounded-md border border-outline-subtle bg-amber-container px-sm py-xs font-label text-label-sm text-on-amber-container">
-            Demo
-          </span>
+          {isDemo && (
+            <span className="rounded-md border border-outline-subtle bg-amber-container px-sm py-xs font-label text-label-sm text-on-amber-container">
+              Demo
+            </span>
+          )}
         </div>
-        <p className="font-mono text-mono-md text-on-surface-variant">
-          {gene.name} • <em>{gene.organism}</em> • {gene.id}
+        <p className="font-body text-body-md text-on-surface-variant">
+          {gene.name}
+          {" · "}
+          <em>{gene.organism}</em>
+          {" · "}
+          GeneID{" "}
+          <span className="font-mono text-mono-md text-primary">{gene.id}</span>
         </p>
-        <SourceBadge source={gene.source} className="self-start" />
-        <div className="mt-xs">
+        <div className="flex flex-wrap items-center gap-sm">
+          <SourceBadge source={gene.source} />
+          {gene.geneType && (
+            <span className="rounded-md border border-outline-subtle bg-surface px-sm py-xs font-label text-label-sm text-on-surface-variant">
+              {gene.geneType}
+            </span>
+          )}
+        </div>
+
+        {/* 8. Save to Collection — identitas kanonik = GeneID */}
+        <div className="mt-sm">
           <SaveToCollection
             entity={{
               type: "gene",
@@ -50,7 +85,7 @@ export function GeneProfile({ gene }: { gene: GeneProfileData }) {
               symbol: gene.symbol,
               organism: gene.organism,
               source: gene.source,
-              isDemo: true,
+              isDemo,
             }}
           />
         </div>
@@ -58,63 +93,126 @@ export function GeneProfile({ gene }: { gene: GeneProfileData }) {
 
       <div className="grid grid-cols-1 gap-lg md:grid-cols-3">
         <div className="flex flex-col gap-lg md:col-span-2">
-          <PixelCard className="p-lg">
-            <h2 className="font-label text-label-sm text-on-surface-variant">
-              About
-            </h2>
-            {gene.description ? (
-              <p className="mt-xs font-body text-body-lg text-on-surface">
-                {gene.description}
+          {/* 2–3. No validated beginner summary; raw NCBI text below. */}
+          <ExplanationPanel summary={gene.summary} />
+
+          {gene.description ? (
+            <ScientificAnnotation
+              annotations={[gene.description]}
+              source="NCBI Gene"
+            />
+          ) : (
+            <PixelCard className="p-lg">
+              <h2 className="font-label text-label-sm text-on-surface-variant">
+                Original scientific annotation
+              </h2>
+              <p className="mt-xs font-body text-body-sm text-on-surface-variant">
+                No gene summary is available from NCBI Gene for this record.
               </p>
-            ) : (
-              <Unavailable label="Beginner-friendly description" />
-            )}
+            </PixelCard>
+          )}
+
+          {/* 6. Verified gene→protein links (UniProt GeneID cross-reference). */}
+          <PixelCard className="p-lg">
+            <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
+              Related entities
+            </h2>
+            <RelationshipExplorer graph={graph} />
           </PixelCard>
 
-          <PixelCard className="p-lg">
-            <h2 className="font-label text-label-sm text-on-surface-variant">
-              Gene function
+          {/* 7. Exploration modules */}
+          <section>
+            <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
+              Exploration modules
             </h2>
-            {gene.functionAnnotations && gene.functionAnnotations.length > 0 ? (
-              <ul className="mt-xs flex flex-col gap-xs">
-                {gene.functionAnnotations.map((f) => (
-                  <li
-                    key={f}
-                    className="font-body text-body-sm text-on-surface"
-                  >
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Unavailable label="Gene function" />
-            )}
-          </PixelCard>
+            <ExplorationModules modules={modules} exportConfig={exportConfig} />
+          </section>
 
-          <PixelCard className="p-lg">
-            <h2 className="font-label text-label-sm text-on-surface-variant">
-              Related proteins
-            </h2>
-            {gene.relatedProteins && gene.relatedProteins.length > 0 ? (
-              <ul className="mt-xs flex flex-col gap-xs">
-                {gene.relatedProteins.map((p) => (
-                  <li key={p.id}>
-                    <Link
-                      href={`/entity/protein/${encodeURIComponent(p.id)}`}
-                      className="font-label text-label-md text-primary hover:underline"
-                    >
-                      {p.name ?? p.id} ({p.id}) →
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Unavailable label="Related proteins" />
-            )}
-          </PixelCard>
+          {/* 9. Study Companion */}
+          <StudyCompanion entityName={gene.name} type="gene" />
         </div>
 
         <div className="flex flex-col gap-lg">
+          {/* 4. Source & evidence */}
+          <PixelCard className="p-lg">
+            <h3 className="font-label text-label-sm text-on-surface-variant">
+              Source &amp; evidence
+            </h3>
+            {gene.sourceUrl ? (
+              <a
+                href={gene.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-xs inline-flex items-center gap-xs font-label text-label-md text-primary hover:underline"
+              >
+                GeneID {gene.id} on NCBI Gene ↗
+              </a>
+            ) : (
+              <p className="mt-xs font-body text-body-sm text-on-surface-variant">
+                No source link is available.
+              </p>
+            )}
+            {gene.retrievedAt && (
+              <p className="mt-xs font-mono text-mono-sm text-on-surface-variant">
+                Retrieved {gene.retrievedAt}
+              </p>
+            )}
+          </PixelCard>
+
+          {/* 5. Advanced details */}
+          <PixelCard className="p-lg">
+            <h3 className="font-label text-label-sm text-on-surface-variant">
+              Advanced details
+            </h3>
+            <dl className="mt-xs flex flex-col gap-xs font-body text-body-sm text-on-surface">
+              <div className="flex justify-between gap-sm">
+                <dt className="text-on-surface-variant">GeneID</dt>
+                <dd className="font-mono tabular-nums">{gene.id}</dd>
+              </div>
+              {gene.chromosome ? (
+                <div className="flex justify-between gap-sm">
+                  <dt className="text-on-surface-variant">Chromosome</dt>
+                  <dd>{gene.chromosome}</dd>
+                </div>
+              ) : (
+                <Unavailable label="Chromosome" />
+              )}
+              {gene.geneType && (
+                <div className="flex justify-between gap-sm">
+                  <dt className="text-on-surface-variant">Gene type</dt>
+                  <dd>{gene.geneType}</dd>
+                </div>
+              )}
+              {gene.taxonomyId != null && (
+                <div className="flex justify-between gap-sm">
+                  <dt className="text-on-surface-variant">Taxonomy ID</dt>
+                  <dd className="tabular-nums">{gene.taxonomyId}</dd>
+                </div>
+              )}
+            </dl>
+          </PixelCard>
+
+          {/* Cross-references: identity only, not navigable without GeneID. */}
+          <PixelCard className="p-lg">
+            <h3 className="font-label text-label-sm text-on-surface-variant">
+              Cross-references
+            </h3>
+            {gene.crossReferences.length > 0 ? (
+              <ul className="mt-xs flex flex-col gap-xs font-body text-body-sm text-on-surface">
+                {gene.crossReferences.map((xref) => (
+                  <li key={`${xref.namespace}:${xref.id}`}>
+                    <span className="text-on-surface-variant">
+                      {xref.namespace}:
+                    </span>{" "}
+                    <span className="font-mono">{xref.id}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Unavailable label="Cross-references" />
+            )}
+          </PixelCard>
+
           <PixelCard className="p-lg">
             <h3 className="font-label text-label-sm text-on-surface-variant">
               Synonyms
@@ -130,27 +228,23 @@ export function GeneProfile({ gene }: { gene: GeneProfileData }) {
 
           <PixelCard className="p-lg">
             <h3 className="font-label text-label-sm text-on-surface-variant">
-              Chromosomal location
+              Related protein names from NCBI
             </h3>
-            {gene.location ? (
-              <p className="mt-xs font-body text-body-sm text-on-surface">
-                {gene.location}
-              </p>
+            {gene.relatedProteins.length > 0 ? (
+              <>
+                <ul className="mt-xs flex flex-col gap-xs font-body text-body-sm text-on-surface">
+                  {gene.relatedProteins.map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+                <p className="mt-xs font-body text-body-sm text-on-surface-variant">
+                  Names only — NCBI does not supply accessions here. Verified
+                  links appear in Related entities.
+                </p>
+              </>
             ) : (
-              <Unavailable label="Chromosomal location" />
+              <Unavailable label="Related protein names" />
             )}
-          </PixelCard>
-
-          <PixelCard className="p-lg">
-            <h3 className="font-label text-label-sm text-on-surface-variant">
-              Source &amp; evidence
-            </h3>
-            <p className="mt-xs font-body text-body-sm text-on-surface">
-              {gene.source}
-            </p>
-            <p className="mt-xs font-body text-body-sm text-on-surface-variant">
-              Gene records arrive with NCBI Gene integration (Slice 2).
-            </p>
           </PixelCard>
         </div>
       </div>

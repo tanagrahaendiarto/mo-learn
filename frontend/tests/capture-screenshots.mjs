@@ -3,7 +3,6 @@
  *
  * Usage:
  *   CAPTURE_BASE_URL=http://localhost:3000 CAPTURE_PREFIX=live node tests/capture-screenshots.mjs
- *   CAPTURE_BASE_URL=http://localhost:3000 CAPTURE_PREFIX=demo CAPTURE_DEMO=true node tests/capture-screenshots.mjs
  *
  * Output: frontend/screenshots/<prefix>-<name>-<viewport>.png
  */
@@ -15,7 +14,6 @@ import { mkdirSync } from "node:fs";
 
 const BASE = process.env.CAPTURE_BASE_URL ?? "http://localhost:3000";
 const PREFIX = process.env.CAPTURE_PREFIX ?? "live";
-const DEMO = process.env.CAPTURE_DEMO === "true";
 
 const OUT = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -34,7 +32,7 @@ const ROUTES = [
   { path: "/", name: "landing" },
   { path: "/search?q=p53&page_size=2", name: "search-p53" },
   { path: "/entity/protein/P04637", name: "protein-profile" },
-  { path: "/entity/gene/HGNC%3A11998", name: DEMO ? "gene-profile" : "gene-soon" },
+  { path: "/entity/gene/7157", name: "gene-profile" },
   { path: "/glosarium", name: "glossary" },
 ];
 

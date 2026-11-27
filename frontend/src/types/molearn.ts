@@ -35,7 +35,8 @@ export type EntitySource =
   | "NCBI Gene"
   | "PDB"
   | "STRING"
-  | "Local (demo)";
+  | "Local (demo)"
+  | "Unknown";
 
 /** Label sumber tak dikenal (provenance hilang pada record lama). */
 export const UNKNOWN_SOURCE_LABEL = "Unknown source";
@@ -59,6 +60,14 @@ export interface BiologicalEntitySummary {
   source: EntitySource;
   /** Deskripsi singkat ramah pemula (Bahasa Indonesia). */
   summary: string;
+  /** ID taksonomi dari penyedia (bila tersedia). */
+  taxonomyId?: number;
+  /** Tautan record asli di penyedia data. */
+  sourceUrl?: string;
+  /** Waktu pengambilan record dari penyedia (ISO 8601 UTC). */
+  retrievedAt?: string;
+  /** Status review UniProt — hanya ada pada record protein. */
+  reviewed?: boolean;
   /**
    * true bila bagian data (mis. struktur/interaksi) belum tersedia
    * di penyedia — membedakan "Data belum tersedia" vs error jaringan.
@@ -92,10 +101,22 @@ export interface SearchResult {
   disambiguation?: string;
   /** true bila data berasal dari fixture lokal (backend belum terhubung). */
   isDemo: boolean;
-  /** Cursor pagination (slice 1: dari backend UniProt). */
+  /** Cursor opaque lintas provider; null/undefined = tidak ada halaman lagi. */
   next_cursor?: string;
-  /** Status penyedia data (slice 1: "available" | "not_found"). */
-  provider_status?: string;
+  /** Status gabungan penyedia data. */
+  provider_status?: "available" | "not_found" | "partial" | "error";
+  /** Status per penyedia (UniProt / NCBI Gene). */
+  providers?: ProviderStatus[];
+  /** Cara query dicocokkan oleh backend. */
+  matchMode?: "exact_accession" | "exact_geneid" | "name";
+}
+
+/** Status satu penyedia pada pencarian campuran. */
+export interface ProviderStatus {
+  name: string;
+  status: "available" | "not_found" | "error";
+  detail?: string | null;
+  count: number;
 }
 
 /**
@@ -119,6 +140,11 @@ export interface SavedEntity {
   isDemo?: boolean;
   /** Catatan singkat yang disimpan bersama item koleksi. */
   note?: string;
+  /**
+   * Identifier lama yang sudah dimigrasikan ke identifier kanonik.
+   * Dipertahankan agar konversi tidak menghapus jejak provenance.
+   */
+  legacyId?: string;
   /** Waktu disimpan (ISO 8601). */
   savedAt: string;
 }
@@ -176,40 +202,79 @@ export interface ExplorationModuleData {
   detail?: string;
 }
 
-/** Profil entitas (kontrak provisional `GET /api/v1/entities/{type}/{id}`). */
-export interface EntityProfile {
+/** Field identitas yang dimiliki semua profil entitas. */
+export interface EntityProfileBase {
   type: EntityType;
   id: string;
   name: string;
   symbol: string;
   organism: string;
   source: EntitySource;
-  /** true = UniProt reviewed (Swiss-Prot); false = unreviewed (TrEMBL). */
-  reviewed?: boolean;
   /** ID taksonomi dari penyedia. */
   taxonomyId?: number;
-  /** Panjang sekuens (jumlah asam amino) — METADATA, bukan sekuens itu sendiri. */
-  length?: number;
   /**
    * Ringkasan ramah pemula yang tervalidasi. Bila kosong, TIDAK ada
    * penjelasan tervalidasi → UI menampilkan unavailable state, bukan
    * teks karangan.
    */
   summary?: string;
+  /** Tautan record asli di penyedia data. */
+  sourceUrl?: string;
+  /** Waktu pengambilan record dari penyedia (ISO 8601 UTC). */
+  retrievedAt?: string;
+}
+
+/** Cross-reference yang dilaporkan penyedia (namespace + id). */
+export interface EntityCrossReference {
+  namespace: string;
+  id: string;
+}
+
+/** Protein yang terhubung ke gen, dengan bukti cross-reference GeneID UniProt. */
+export interface ProteinLink {
+  accession: string;
+  primaryName?: string;
+  geneSymbols: string[];
+  reviewed?: boolean;
+  source: EntitySource;
+  sourceUrl: string;
+  evidence: string;
+}
+
+/** Profil protein — `GET /api/v1/entities/protein/{accession}`. */
+export interface ProteinEntityProfile extends EntityProfileBase {
+  type: "protein";
+  /** true = UniProt reviewed (Swiss-Prot); false = unreviewed (TrEMBL). */
+  reviewed?: boolean;
+  /** Panjang sekuens (jumlah asam amino) — METADATA, bukan sekuens itu sendiri. */
+  length?: number;
   /** Anotasi fungsi mentah dari sumber (verbatim, boleh kosong). */
   functionAnnotations: string[];
-  /** Cross-reference gen dari sumber (namespace + id). */
-  geneCrossrefs: { namespace: string; id: string }[];
-  /** Gen terkait (simbol / HGNC id) bila tersedia dari sumber. */
+  /** Cross-reference gen dari sumber (namespace + id), termasuk GeneID/HGNC. */
+  geneCrossrefs: EntityCrossReference[];
+  /** GeneID kanonik bila sumber menyediakannya. */
   relatedGeneId?: string;
-  /** Rujukan eksternal (DOI/PMID/PDB) — hanya diisi bila benar-benar tersedia. */
-  references: {
-    uniprotUrl?: string;
-    pdbId?: string;
-    doi?: string;
-    pmid?: string;
-  };
 }
+
+/** Profil gen — `GET /api/v1/entities/gene/{gene_id}` (NCBI Gene). */
+export interface GeneEntityProfile extends EntityProfileBase {
+  type: "gene";
+  /** Ringkasan NCBI (`Entrezgene_summary`), verbatim — bukan penjelasan pemula. */
+  description?: string;
+  /** Lokasi sitogenetik, mis. `17p13.1`. */
+  chromosome?: string;
+  /** Jenis gen NCBI, mis. `protein-coding`. */
+  geneType?: string;
+  synonyms: string[];
+  crossReferences: EntityCrossReference[];
+  /** Nama protein dari NCBI — nama saja, tanpa accession. */
+  relatedProteins: string[];
+  /** Link gen→protein yang didukung bukti cross-reference GeneID UniProt. */
+  proteinLinks: ProteinLink[];
+}
+
+/** Profil entitas bertipe (discriminated union gen | protein). */
+export type EntityProfile = ProteinEntityProfile | GeneEntityProfile;
 
 /* ---------- Relationship Explorer (Task D) ---------- */
 
@@ -247,23 +312,3 @@ export interface RelationshipGraph {
   isDemo: boolean;
 }
 
-/* ---------- Gene profile template (Task E) ---------- */
-
-/** Data profil gen — dipakai template hingga endpoint Slice 2 tersedia. */
-export interface GeneProfileData {
-  type: "gene";
-  id: string;
-  symbol: string;
-  name: string;
-  organism: string;
-  source: EntitySource;
-  /** Nama resmi / deskripsi gen (bila tersedia). */
-  description?: string;
-  /** Lokasi kromosom (bila tersedia). */
-  location?: string;
-  synonyms: string[];
-  /** Protein terkait (hanya crossref tervalidasi). */
-  relatedProteins?: { id: string; name?: string }[];
-  /** Anotasi fungsi mentah dari sumber (verbatim). */
-  functionAnnotations?: string[];
-}

@@ -2,7 +2,12 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { isEntityType } from "@/types/molearn";
-import type { ExplorationModuleData, EntityProfile } from "@/types/molearn";
+import type {
+  EntityProfile,
+  ExplorationModuleData,
+  GeneEntityProfile,
+  ProteinEntityProfile,
+} from "@/types/molearn";
 import { EntityBadge } from "@/components/EntityBadge";
 import { SourceBadge } from "@/components/SourceBadge";
 import { PixelCard } from "@/components/PixelCard";
@@ -18,7 +23,7 @@ import { ScientificAnnotation } from "@/components/ScientificAnnotation";
 import { buildCrossrefGraph } from "@/lib/relationships";
 import type { CsvColumn } from "@/lib/csv";
 import { fetchEntityProfile, IS_DEMO_MODE, ApiError } from "@/lib/api";
-import { GENE_PROFILE_FIXTURES, EXPLORATION_MODULES } from "@/data/fixtures";
+import { EXPLORATION_MODULES } from "@/data/fixtures";
 
 type Params = Promise<{ type: string; id: string }>;
 
@@ -37,7 +42,7 @@ export async function generateMetadata(
   const type = decodeParam(raw.type);
   const id = decodeParam(raw.id);
 
-  if (type !== "protein") {
+  if (!isEntityType(type)) {
     return { title: "Entity Profile — moLearn" };
   }
 
@@ -69,7 +74,7 @@ function modulesForProfile(
 ): ExplorationModuleData[] {
   return EXPLORATION_MODULES.map((m) => {
     if (m.module === "sequence") {
-      if (profile.length != null) {
+      if (profile.type === "protein" && profile.length != null) {
         return {
           ...m,
           state: "available" as const,
@@ -79,7 +84,10 @@ function modulesForProfile(
       return {
         ...m,
         state: "empty" as const,
-        detail: "Sequence length is not available for this entity.",
+        detail:
+          profile.type === "gene"
+            ? "NCBI Gene does not provide a nucleotide sequence in this integration."
+            : "Sequence length is not available for this entity.",
       };
     }
     if (m.module === "export") {
@@ -93,19 +101,27 @@ function modulesForProfile(
   });
 }
 
-function ProteinProfile({ profile }: { profile: EntityProfile }) {
+function exportConfigFor(profile: EntityProfile) {
+  return {
+    rows: [
+      {
+        type: profile.type,
+        id: profile.id,
+        symbol: profile.symbol,
+        name: profile.name,
+        organism: profile.organism,
+        source: profile.source,
+      },
+    ],
+    columns: EXPORT_COLUMNS,
+    filename: `${profile.id}.csv`,
+    attribution: `Source: ${profile.source}. Attribute the source when sharing this data.`,
+  };
+}
+
+function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
   const graph = buildCrossrefGraph(profile, IS_DEMO_MODE);
   const modules = modulesForProfile(profile);
-  const exportRows = [
-    {
-      type: profile.type,
-      id: profile.id,
-      symbol: profile.symbol,
-      name: profile.name,
-      organism: profile.organism,
-      source: profile.source,
-    },
-  ];
 
   return (
     <div className="flex flex-col gap-lg">
@@ -208,12 +224,7 @@ function ProteinProfile({ profile }: { profile: EntityProfile }) {
             </h2>
             <ExplorationModules
               modules={modules}
-              exportConfig={{
-                rows: exportRows,
-                columns: EXPORT_COLUMNS,
-                filename: `${profile.id}.csv`,
-                attribution: `Source: ${profile.source}. Attribute the source when sharing this data.`,
-              }}
+              exportConfig={exportConfigFor(profile)}
             />
           </section>
 
@@ -227,9 +238,9 @@ function ProteinProfile({ profile }: { profile: EntityProfile }) {
             <h3 className="font-label text-label-sm text-on-surface-variant">
               Source &amp; evidence
             </h3>
-            {profile.references.uniprotUrl ? (
+            {profile.sourceUrl ? (
               <a
-                href={profile.references.uniprotUrl}
+                href={profile.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-xs inline-flex items-center gap-xs font-label text-label-md text-primary hover:underline"
@@ -239,6 +250,11 @@ function ProteinProfile({ profile }: { profile: EntityProfile }) {
             ) : (
               <p className="mt-xs font-body text-body-sm text-on-surface-variant">
                 No source link is available.
+              </p>
+            )}
+            {profile.retrievedAt && (
+              <p className="mt-xs font-mono text-mono-sm text-on-surface-variant">
+                Retrieved {profile.retrievedAt}
               </p>
             )}
           </PixelCard>
@@ -269,9 +285,52 @@ function ProteinProfile({ profile }: { profile: EntityProfile }) {
               )}
             </dl>
           </PixelCard>
+
+          {/* Cross-references keep HGNC identity even when only GeneID is navigable. */}
+          <PixelCard className="p-lg">
+            <h3 className="font-label text-label-sm text-on-surface-variant">
+              Cross-references
+            </h3>
+            {profile.geneCrossrefs.length > 0 ? (
+              <>
+                <ul className="mt-xs flex flex-col gap-xs font-body text-body-sm text-on-surface">
+                  {profile.geneCrossrefs.map((xref) => (
+                    <li key={`${xref.namespace}:${xref.id}`}>
+                      <span className="text-on-surface-variant">
+                        {xref.namespace}:
+                      </span>{" "}
+                      <span className="font-mono">{xref.id}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-xs font-body text-body-sm text-on-surface-variant">
+                  Only GeneID entries have a canonical gene profile route.
+                </p>
+              </>
+            ) : (
+              <p className="mt-xs font-body text-body-sm text-on-surface-variant">
+                No gene cross-reference is available from the source.
+              </p>
+            )}
+          </PixelCard>
         </div>
       </div>
     </div>
+  );
+}
+
+function GeneProfileView({ profile }: { profile: GeneEntityProfile }) {
+  const graph = buildCrossrefGraph(profile, IS_DEMO_MODE);
+  const modules = modulesForProfile(profile);
+
+  return (
+    <GeneProfile
+      gene={profile}
+      graph={graph}
+      modules={modules}
+      exportConfig={exportConfigFor(profile)}
+      isDemo={IS_DEMO_MODE}
+    />
   );
 }
 
@@ -286,66 +345,12 @@ export default async function EntityProfilePage(props: {
     notFound();
   }
 
-  // Gene: template demo (Slice 2 NCBI Gene belum tersedia) atau Coming Soon.
-  if (type === "gene") {
-    const gene = IS_DEMO_MODE
-      ? GENE_PROFILE_FIXTURES.find((g) => g.id === id)
-      : undefined;
-
-    if (gene) {
-      return (
-        <main className="mx-auto w-full max-w-5xl px-md py-xl md:px-xl">
-          <Link
-            href="/search"
-            className="inline-flex items-center gap-xs font-label text-label-md text-on-surface-variant hover:text-primary"
-          >
-            ← Back to Search
-          </Link>
-          <div className="mt-xl">
-            <GeneProfile gene={gene} />
-          </div>
-        </main>
-      );
-    }
-
-    return (
-      <main className="mx-auto w-full max-w-5xl px-md py-xl md:px-xl">
-        <Link
-          href="/search"
-          className="inline-flex items-center gap-xs font-label text-label-md text-on-surface-variant hover:text-primary"
-        >
-          ← Back to Search
-        </Link>
-
-        <div className="mt-xl">
-          <PixelCard shadow="lg" className="p-xl text-center">
-            <EntityBadge type={type} />
-            <h1 className="mt-md font-headline text-headline-lg-mobile text-on-surface md:text-headline-lg">
-              Coming Soon
-            </h1>
-            <p className="mt-xs font-body text-body-md text-on-surface-variant">
-              Gene profiles are coming in slice 2 (NCBI Gene integration).
-            </p>
-            <p className="mt-sm font-body text-body-sm text-on-surface-variant">
-              For now, explore protein profiles from UniProt.
-            </p>
-            <div className="mt-lg">
-              <PixelButtonLink href="/search" variant="primary" size="md">
-                Explore Proteins
-              </PixelButtonLink>
-            </div>
-          </PixelCard>
-        </div>
-      </main>
-    );
-  }
-
   let profile: EntityProfile;
   try {
     profile = await fetchEntityProfile(type, id);
   } catch (error) {
     const err = error instanceof ApiError ? error.status : undefined;
-    // 404: accession valid tapi tidak ada. 422: format accession tidak valid.
+    // 404: identifier valid tapi tidak ada. 422: format identifier tidak valid.
     // Keduanya = entitas tidak bisa ditampilkan -> halaman "not found".
     if (err === 404 || err === 422) {
       notFound();
@@ -363,7 +368,11 @@ export default async function EntityProfilePage(props: {
       </Link>
 
       <div className="mt-lg">
-        <ProteinProfile profile={profile} />
+        {profile.type === "gene" ? (
+          <GeneProfileView profile={profile} />
+        ) : (
+          <ProteinProfileView profile={profile} />
+        )}
       </div>
 
       <div className="mt-xl">

@@ -635,4 +635,230 @@ sisa batasan tercatat di §15.11.
 
 ---
 
+## 16. Sprint Frontend Slice 2 — NCBI Gene + Unified Search
+
+### 16.1 Basis dan status
+
+| Item | Nilai |
+|---|---|
+| Branch kerja | `feat/frontend-slice2-integration` |
+| Base frontend | `dc61d41` (PR #3, Frontend Learning & Exploration) |
+| Backend | merge lokal `origin/feat/backend-slice2` (`d75ef24`) → commit merge `5b0146b` |
+| Versi backend | `0.2.0` (`/api/v1/health`) |
+| Push / PR | **Belum** — menunggu persetujuan |
+| Backend source | 0 perubahan setelah merge |
+| Dokumen kontrak acuan | `docs/SLICE2-CONTRACT-FINAL.md`, `docs/HANDOFF-slice2.md`, `docs/FRONTEND-PATCH-slice2.md`, `backend/app/schemas.py`, `/openapi.json` dari branch |
+
+Kontrak diverifikasi dari source branch (bukan dokumen perencanaan lama):
+`/openapi.json` melaporkan `version 0.2.0`, 4 path, dan parameter
+`q`, `entity_type`, `cursor`, `page_size`.
+
+### 16.2 Kontrak API Slice 2 (terpasang)
+
+| Method | Path | Catatan |
+|---|---|---|
+| GET | `/api/v1/health` | `version: "0.2.0"` |
+| GET | `/api/v1/search` | `entity_type=all\|gene\|protein` (default `all`), `page_size` 1–100 (default 10), cursor opaque |
+| GET | `/api/v1/entities/protein/{accession}` | UniProt; bentuk Slice 1 dipertahankan |
+| GET | `/api/v1/entities/gene/{gene_id}` | GeneID numerik positif (maks. 12 digit); selain itu 422; tidak ada → 404 `gene_not_found` |
+
+`SearchResponse`: `query`, `match_mode` (`exact_accession` \|
+`exact_geneid` \| `name`), `results` (union protein/gene), `next_cursor`,
+`provider_status` (`available` \| `not_found` \| `partial` \| `error`),
+`providers[]` (`name`, `status`, `detail`, `count`).
+
+`GeneProfile` menambah `description`, `chromosome`, `gene_type`
+(ketiganya nullable), `cross_references`, `related_proteins` (nama saja),
+dan `protein_links[]` (`accession`, `primary_name`, `gene_symbols`,
+`reviewed`, `source`, `source_url`, `evidence="uniprot_geneid_crossref"`).
+
+### 16.3 Pemetaan backend → frontend
+
+| Backend | Frontend | Transformasi |
+|---|---|---|
+| `entity_type` | `type` | Discriminated union `gene` \| `protein`; tidak ada `entity_type="protein"` hardcoded |
+| `accession` | `id` | GeneID untuk gen, accession UniProt untuk protein |
+| `primary_name` | `name` / `symbol` | Fallback ke accession |
+| `organism.scientific_name` | `organism` | `"Unknown"` bila null |
+| `organism.taxonomy_id` | `taxonomyId` | Direct |
+| `source` | `source` | `uniprot` → UniProt, `ncbi_gene` → NCBI Gene, lainnya → Unknown |
+| `source_url` | `sourceUrl` | Direct |
+| `retrieved_at` | `retrievedAt` | Direct |
+| `synonyms` + `gene_symbols` | `aliases` | Merge + dedup |
+| `reviewed` | `reviewed` | Protein saja |
+| `length` | `length` | Protein saja |
+| `function_annotations` | `functionAnnotations` | Protein, verbatim |
+| `gene_crossrefs[GeneID]` | `relatedGeneId` | Hanya namespace `GeneID` numerik |
+| `description` | `description` | Teks NCBI verbatim; bukan ringkasan pemula |
+| `cross_references` | `crossReferences` | Direct |
+| `related_proteins` | `relatedProteins` | Nama saja, tidak dijadikan tautan |
+| `protein_links` | `proteinLinks` | Hanya link ber-evidence `uniprot_geneid_crossref` |
+| `provider_status` / `providers` | `provider_status` / `providers` | `partial` = peringatan, bukan error |
+| `match_mode` | `matchMode` | `exact_geneid` ditambahkan |
+
+Tidak ada field yang dikarang: `summary` (penjelasan pemula tervalidasi)
+tetap kosong untuk gen dan protein karena belum ada sumber tervalidasi.
+
+### 16.4 Perilaku yang diterapkan
+
+1. **Proxy** (`src/app/api/backend/[...path]/route.ts`) — allowlist persis:
+   `/api/v1/health`, `/api/v1/search`,
+   `/api/v1/entities/protein/{accession UniProt}`,
+   `/api/v1/entities/gene/{1–12 digit, nilai > 0}`. Regex disalin dari
+   kontrak backend (`is_accession`, `_GENEID_RE`). Path lain 404, non-GET 405,
+   timeout 60 s, status/body upstream diteruskan apa adanya.
+2. **Unified search** — filter dijalankan di server lewat `entity_type`.
+   `?type=Gene` dan `?entity_type=gene` sama-sama didukung. Cursor dibuang
+   saat `q`, tipe, atau `page_size` berubah (komponen di-remount lewat `key`).
+   Request memakai `AbortController` + penanda generasi; respons lama
+   diabaikan. Duplikat dibuang berdasarkan `type + source + id`.
+3. **Status penyedia** — `partial` menampilkan peringatan bernama penyedia
+   yang gagal; hasil penyedia sehat tetap tampil. Empty-after-failure
+   dibedakan dari "tidak ada entitas". Kegagalan total menampilkan
+   `ErrorState`, tanpa fallback fixture.
+4. **Routing identifier** — `7157` selalu lookup GeneID persis; `P04637`
+   selalu lookup accession persis. Filter yang tidak cocok menampilkan pesan
+   "excluded by filter", bukan pencarian nama.
+5. **Profil gen** — Coming Soon dihapus. Halaman `/entity/gene/7157`
+   memuat data NCBI live dan memakai ulang `GeneProfile`,
+   `ExplanationPanel`, `ScientificAnnotation`, `SourceBadge`,
+   `SaveToCollection`, Advanced Details, modul eksplorasi, dan Study
+   Companion. Field null tampil "not available from NCBI Gene".
+6. **Relasi tervalidasi** — gen→protein hanya dari `protein_links`
+   (evidence `uniprot_geneid_crossref`); protein→gen hanya dari
+   cross-reference namespace `GeneID`. Kecocokan simbol tidak pernah dipakai.
+   Label selalu "GeneID cross-reference". HGNC ditampilkan sebagai
+   provenance, bukan rute gen.
+7. **Koleksi** — identitas kanonik = `type + source + id`. Migrasi hanya
+   untuk pemetaan terverifikasi `HGNC:11998 → 7157` (didukung cross-reference
+   NCBI Gene 7157 dan UniProt P04637); provenance disimpan sebagai
+   `legacyId` dan ditampilkan "Migrated from HGNC:11998". Record tanpa
+   pemetaan terverifikasi dipertahankan apa adanya.
+8. **Pesan batasan** — "Gene name search currently covers human genes only
+   (NCBI taxid 9606). Exact GeneID lookup is not restricted." hanya muncul
+   pada filter All/Gene, bukan pada filter Protein.
+
+### 16.5 File yang diubah
+
+| File | Perubahan |
+|---|---|
+| `frontend/src/types/molearn.ts` | Discriminated union `GeneEntityProfile` / `ProteinEntityProfile`, `ProviderStatus`, `ProteinLink`, `EntityCrossReference`, `legacyId` |
+| `frontend/src/lib/api.ts` | Adapter union, mapping semua field Slice 2, `exact_geneid`, `providers`, kode error NCBI, validasi GeneID, `AbortSignal` |
+| `frontend/src/app/api/backend/[...path]/route.ts` | Allowlist regex persis kontrak; 404/405; timeout 60 s |
+| `frontend/src/app/search/page.tsx` | Filter tipe dari URL, `page_size`, cursor diteruskan; remount `key` |
+| `frontend/src/app/search/results-client.tsx` | Filter server, reset cursor, guard respons basi, dedup, status penyedia, empty state kontekstual, catatan human-only |
+| `frontend/src/app/entity/[type]/[id]/page.tsx` | Cabang gen live, profil protein dipecah, Advanced Details + Source & evidence, 404/422 |
+| `frontend/src/components/GeneProfile.tsx` | Profil gen NCBI live (bukan template demo) |
+| `frontend/src/lib/relationships.ts` | Graf hanya dari `protein_links` / `GeneID` cross-reference |
+| `frontend/src/components/RelationshipExplorer.tsx` | Label node accession untuk isoform; label edge tidak ditumpuk saat relasi banyak |
+| `frontend/src/lib/use-collection.ts` | Migrasi legacy terverifikasi + dedup |
+| `frontend/src/app/collection/page.tsx` | Menampilkan provenance migrasi |
+| `frontend/src/data/fixtures.ts` | Identitas gen demo → GeneID kanonik (`7157`, `22059`) |
+| `frontend/tests/regression.mjs` | Rute gen live, cek filter Gene server-side |
+| `frontend/tests/learning-exploration.mjs` | Profil gen live + koleksi gen/protein terpisah |
+| `frontend/tests/capture-screenshots.mjs` | Rute `/entity/gene/7157` |
+| `frontend/tests/slice2-integration.mjs` | **Baru** — suite Slice 2 (live + simulated) |
+| `frontend/tests/stub-backend.mjs` | **Baru** — backend simulasi untuk skenario gagal |
+
+### 16.6 Hasil pengujian aktual
+
+Lingkungan: Windows, Node v24, Chromium headless, backend lokal
+`127.0.0.1:8000` versi `0.2.0`, frontend produksi `localhost:3000`.
+Skenario kegagalan memakai stack terpisah `localhost:3001` +
+`tests/stub-backend.mjs` (SIMULATED, bukan penyedia nyata).
+
+| Pengujian | Perintah | Hasil |
+|---|---|---|
+| Typecheck | `npm run typecheck` | ✅ exit 0 |
+| Lint | `npm run lint` | ✅ exit 0 |
+| Build produksi | `npm run build` | ✅ exit 0 |
+| Regresi rute + layout | `node tests/regression.mjs` | ✅ **75/75** (8 rute × 3 viewport + cek live) |
+| Learning & Exploration | `node tests/learning-exploration.mjs` | ✅ **97/97** |
+| Learning & Exploration (demo) | build `NEXT_PUBLIC_DEMO_MODE=true`, `LEARNING_DEMO=true` | ✅ **93/93** |
+| Slice 2 integration | `SIM_BASE_URL=http://localhost:3001 node tests/slice2-integration.mjs` | ✅ **40/40** (33 live + 7 SIMULATED) |
+| Health via proxy | `GET /api/backend/api/v1/health` | ✅ `{"status":"ok","version":"0.2.0"}` |
+| TP53 All | `/search?q=TP53` | ✅ protein + gen, 4 hasil |
+| TP53 Gene / Protein | `?entity_type=gene` / `protein` | ✅ hanya tipe yang diminta |
+| Exact GeneID | `?q=7157` | ✅ `match_mode=exact_geneid`, hanya gen 7157 |
+| GeneID + filter Protein | `?q=7157&entity_type=protein` | ✅ `not_found`, pesan "GeneID Excluded by Filter" |
+| Exact accession | `?q=P04637` | ✅ `match_mode=exact_accession`, hanya protein P04637 |
+| Accession + filter Gene | `?q=P04637&entity_type=gene` | ✅ `not_found`, pesan "Protein Accession Excluded by Filter" |
+| Profil gen live | `/entity/gene/7157` | ✅ TP53, 17p13.1, protein-coding, taxid 9606, 7 protein_links, tanpa "Coming Soon" |
+| Relasi gen→protein | `/entity/gene/7157` | ✅ tautan `/entity/protein/P04637`, label "GeneID cross-reference" |
+| Relasi protein→gen | `/entity/protein/P04637` | ✅ tautan `/entity/gene/7157` |
+| GeneID invalid | `/entity/gene/abc`, `/entity/gene/0` | ✅ 404 |
+| GeneID tidak ada | `/entity/gene/999999999` | ✅ 404 |
+| Pagination | `?q=TP53&page_size=2` + "Load More" | ✅ jumlah kartu bertambah, tanpa duplikat |
+| Koleksi gen + protein | simpan 7157 dan P04637 | ✅ 2 record terpisah, persist setelah reload |
+| Migrasi legacy | record `HGNC:11998` | ✅ menjadi 7157, tampil "Migrated from HGNC:11998" |
+| Legacy tak terpetakan | record `HGNC:99999` | ✅ dipertahankan, tidak dihapus |
+| Partial provider (SIMULATED) | stub `provider_status=partial` | ✅ peringatan "Some providers did not respond", hasil sehat tetap tampil |
+| Empty-after-failure (SIMULATED) | stub `partial` tanpa hasil | ✅ "No Results From Available Providers" |
+| Backend mati (SIMULATED) | stub memutus koneksi | ✅ HTTP 500 + "Unable to Load Data"; tidak ada fixture pengganti |
+
+Catatan rate limit: NCBI membatasi 3 request/detik. Pengujian live berjalan
+berurutan tanpa burst; bila 429 terjadi, backend memetakannya ke
+`rate_limited_by_ncbi` dan UI menampilkan peringatan penyedia. Pada run final
+tidak ada 429.
+
+### 16.7 Bukti screenshot
+
+Diambil dari build produksi dengan data live
+(`frontend/screenshots/slice2-live-*.png`), 3 viewport
+(1440×900, 768×1024, 390×844):
+
+- `slice2-live-landing-{desktop,tablet,mobile}.png`
+- `slice2-live-search-p53-{desktop,tablet,mobile}.png`
+- `slice2-live-gene-profile-{desktop,tablet,mobile}.png`
+- `slice2-live-protein-profile-{desktop,tablet,mobile}.png`
+- `slice2-live-collection-{desktop,tablet,mobile}.png`
+- `slice2-live-glossary-{desktop,tablet,mobile}.png`
+
+Hasil inspeksi visual: tidak ada overflow horizontal; filter tipe dan catatan
+human-only terbaca penuh; kartu gen dan protein terbedakan lewat badge,
+identitas (GeneID vs accession), organisme, dan sumber; peta relasi tidak
+menumpuk label; layout mobile menumpuk satu kolom.
+
+### 16.8 Keterbatasan yang tetap berlaku
+
+- Pencarian nama gen hanya mencakup `Homo sapiens` (taxid 9606). Lookup
+  GeneID persis tidak dibatasi organisme, dan UI menyatakan hal ini.
+- Belum ada filter organisme pada pencarian.
+- Relasi hanya cross-reference GeneID UniProt. Tidak ada STRING, PPI, atau
+  relasi pihak ketiga.
+- `related_proteins` NCBI hanya nama tanpa accession, sehingga tidak dapat
+  dinavigasi; UI menyatakannya.
+- Deskripsi gen adalah teks mentah NCBI, bukan penjelasan pemula tervalidasi.
+- Modul Structure, Ligand, Protein Interaction, Scientific Literature, dan
+  Study Companion tetap `unavailable`.
+- Belum ada database, autentikasi, cloud sync, atau cache. Koleksi hanya
+  `localStorage`.
+- Batas waktu backend bersifat soft deadline; parser RFC `Link` lengkap belum
+  ada (cursor opaque dipakai apa adanya).
+
+### 16.9 Sisa kebutuhan MVP
+
+1. Filter organisme dan pencarian nama lintas organisme (butuh dukungan
+   provider).
+2. Sumber relasi tambahan (mis. STRING/PDB) dengan label evidence masing
+   masing; jangan menurunkan bukti menjadi tebakan simbol.
+3. Ringkasan pemula tervalidasi untuk gen/protein (kurasi atau pipeline
+   tervalidasi, bukan generasi bebas).
+4. Modul struktur, ligan, interaksi, dan literatur ilmiah.
+5. Akun, penyimpanan koleksi di server, dan ekspor koleksi penuh.
+6. Parser RFC `Link` penuh bila backend beralih dari cursor opaque.
+
+### 16.10 Status git Slice 2
+
+| Item | Status |
+|---|---|
+| Branch | `feat/frontend-slice2-integration` |
+| Commit merge backend | `5b0146b` (lokal, disetujui) |
+| Commit implementasi frontend | **Belum** — menunggu persetujuan |
+| Push / PR | **Belum** |
+| Backend source | 0 perubahan |
+| Graphify | diperbarui setelah perubahan ini (`graphify update .`) |
+
+---
+
 *Laporan ini dibuat dalam Bahasa Indonesia sesuai ketentuan tugas.*
