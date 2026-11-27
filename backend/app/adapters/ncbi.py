@@ -118,7 +118,11 @@ def _efetch_gene_xml(client: httpx.Client, gene_id: str) -> ET.Element:
                 time.sleep(1)
                 continue
             raise ProviderError("upstream_ncbi_error")
-        return ET.fromstring(resp.text)
+        try:
+            root = ET.fromstring(resp.text)
+        except ET.ParseError as e:
+            raise UpstreamMalformed() from e
+        return root
     raise ProviderError("upstream_ncbi_error")
 
 
@@ -161,41 +165,33 @@ def _gene_from_xml(eg: ET.Element, gene_id: str) -> dict:
         org_ref = src.find(".//Org-ref")
         if org_ref is not None:
             org_name = _first_text(org_ref, "Org-ref_taxname")
-            # taxid is in Dbtag with db=taxon
+            # taxid lives in Org-ref_db/Dbtag where Dbtag_db == "taxon"
             for dbtag in org_ref.iter("Dbtag"):
-                db_el = dbtag.find("Db")
-                if db_el is not None and db_el.text == "taxon":
-                    oid = dbtag.find("Object-id")
-                    if oid is not None:
-                        num = oid.find("Object-id_id")
-                        if num is not None and num.text:
-                            try:
-                                tax_id = int(num.text)
-                            except ValueError:
-                                pass
+                if _first_text(dbtag, "Dbtag_db") == "taxon":
+                    tax_raw = _first_text(dbtag, ".//Object-id_id")
+                    if tax_raw and tax_raw.isdigit():
+                        tax_id = int(tax_raw)
                     break
 
     # summary
     summary = _first_text(eg, "Entrezgene_summary")
 
-    # cross-references from Gene-ref_db
+    # cross-references from Gene-ref_db (HGNC, Ensembl, MIM, ...)
     xrefs: list[dict] = []
     if gr is not None:
         db_el = gr.find("Gene-ref_db")
         if db_el is not None:
             for dbtag in db_el.findall("Dbtag"):
-                db = _first_text(dbtag, "Db")
-                oid = dbtag.find("Object-id")
-                if db and oid is not None:
-                    val = oid.find("Str") or oid.find("Num")
-                    if val is not None and val.text:
-                        xrefs.append({"namespace": db, "id": val.text.strip()})
+                db = _first_text(dbtag, "Dbtag_db")
+                val = _first_text(dbtag, ".//Object-id_str") or _first_text(dbtag, ".//Object-id_id")
+                if db and val:
+                    xrefs.append({"namespace": db, "id": val})
 
-    # related proteins from Entrezgene_prot / Prot-ref_name-E
+    # related protein names from Entrezgene_prot / Prot-ref_name_E
     related_proteins: list[str] = []
     prot = eg.find("Entrezgene_prot")
     if prot is not None:
-        for name_el in prot.findall(".//Prot-ref_name-E"):
+        for name_el in prot.findall(".//Prot-ref_name_E"):
             if name_el.text and name_el.text.strip():
                 related_proteins.append(name_el.text.strip())
 
@@ -332,15 +328,16 @@ def efetch_batch(client: httpx.Client, gene_ids: list[str]) -> dict[str, dict]:
             raise ProviderError("upstream_ncbi_error")
         try:
             root = ET.fromstring(resp.text)
-        except ET.ParseError:
-            raise UpstreamMalformed()
+        except ET.ParseError as e:
+            raise UpstreamMalformed() from e
         results: dict[str, dict] = {}
         egs = root.find("Entrezgene-Set")
-        if egs is not None:
-            for eg in egs.findall("Entrezgene"):
-                gid_el = eg.find(".//Gene-track_geneid")
-                if gid_el is not None and gid_el.text:
-                    results[gid_el.text] = _gene_from_xml(eg, gid_el.text)
+        # A single-gene efetch returns Entrezgene directly under the root.
+        candidates = egs.findall("Entrezgene") if egs is not None else root.findall("Entrezgene")
+        for eg in candidates:
+            gid_el = eg.find(".//Gene-track_geneid")
+            if gid_el is not None and gid_el.text:
+                results[gid_el.text] = _gene_from_xml(eg, gid_el.text)
         return results
     raise ProviderError("upstream_ncbi_error")
 

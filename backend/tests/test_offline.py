@@ -156,11 +156,11 @@ class TestSearchEndpoint:
         set_client(httpx.Client(transport=httpx.MockTransport(_search_handler), base_url="https://rest.uniprot.org", timeout=20.0))
 
     def test_empty_q_422(self):
-        r = self.c.get("/api/v1/search", params={"q": "   "})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "   "})
         assert r.status_code == 422
 
     def test_name_search_p1(self):
-        r = self.c.get("/api/v1/search", params={"q": "p53", "page_size": 2})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53", "page_size": 2})
         assert r.status_code == 200
         b = r.json()
         assert b["match_mode"] == "name"
@@ -169,19 +169,19 @@ class TestSearchEndpoint:
         assert b["provider_status"] == "available"
 
     def test_name_search_p2_follows_cursor(self):
-        r1 = self.c.get("/api/v1/search", params={"q": "p53", "page_size": 2}).json()
-        r2 = self.c.get("/api/v1/search", params={"q": "p53", "page_size": 2, "cursor": r1["next_cursor"]}).json()
+        r1 = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53", "page_size": 2}).json()
+        r2 = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53", "page_size": 2, "cursor": r1["next_cursor"]}).json()
         assert [x["accession"] for x in r2["results"]] == ["Q9Y6P5", "A1A5B4"]
 
     def test_accession_exact_mode(self):
-        r = self.c.get("/api/v1/search", params={"q": "P04637"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "P04637"})
         assert r.status_code == 200
         assert r.json()["match_mode"] == "exact_accession"
 
     def test_accession_not_found_is_not_name_search(self):
         # valid 6-char accession that upstream has no record for -> not_found,
         # still classified exact_accession (never silently downgraded to name).
-        r = self.c.get("/api/v1/search", params={"q": "A1B2C3"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "A1B2C3"})
         assert r.status_code == 200
         b = r.json()
         assert b["results"] == []
@@ -190,13 +190,13 @@ class TestSearchEndpoint:
 
     def test_sim_lastpage_next_cursor_null(self):
         # SIMULASI: response without Link header -> next_cursor None
-        r = self.c.get("/api/v1/search", params={"q": "unknown_sim"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "unknown_sim"})
         assert r.json()["next_cursor"] is None
         assert r.json()["provider_status"] == "not_found"
 
     def test_upstream_500_gives_provider_error_not_null_cursor(self):
         # valid 10-char accession (official syntax) -> upstream 500 -> provider_error
-        r = self.c.get("/api/v1/search", params={"q": "A0A022YWF9"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "A0A022YWF9"})
         assert r.status_code == 502
         assert r.json() == {"status": "provider_error", "detail": "upstream_uniprot_error"}
 
@@ -204,30 +204,30 @@ class TestSearchEndpoint:
         # SIMULASI (review_slice1_postfix_checks.py case 1): item carries a NUMERIC
         # primaryAccession -> record has no valid identity. Must be 502
         # upstream_uniprot_malformed, never a 200 with an empty accession string.
-        r = self.c.get("/api/v1/search", params={"q": "malformed_numeric_id"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "malformed_numeric_id"})
         assert r.status_code == 502
         assert r.json() == {"status": "provider_error", "detail": "upstream_uniprot_malformed"}
 
     def test_malformed_empty_record_is_provider_error_not_not_found(self):
         # SIMULASI (postfix probe case 2): results:[{}] -> source record is malformed.
         # Must be 502, distinguished from a genuine empty result set (not_found).
-        r = self.c.get("/api/v1/search", params={"q": "empty_record_sim"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "empty_record_sim"})
         assert r.status_code == 502
         assert r.json()["detail"] == "upstream_uniprot_malformed"
 
     def test_query_too_long_400(self):
-        r = self.c.get("/api/v1/search", params={"q": "x" * 101})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "x" * 101})
         assert r.status_code == 400
         assert r.json()["detail"] == "query_too_long"
 
     def test_cursor_url_rejected_400(self):
-        r = self.c.get("/api/v1/search", params={"q": "p53", "cursor": "https://evil.example?"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53", "cursor": "https://evil.example?"})
         assert r.status_code == 400
         assert r.json()["detail"] == "cursor_invalid"
 
     def test_page_size_bounds(self):
-        assert self.c.get("/api/v1/search", params={"q": "p53", "page_size": 0}).status_code == 422
-        assert self.c.get("/api/v1/search", params={"q": "p53", "page_size": 101}).status_code == 422
+        assert self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53", "page_size": 0}).status_code == 422
+        assert self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53", "page_size": 101}).status_code == 422
 
 
 # ---------- endpoint: profile ----------
@@ -357,7 +357,7 @@ class TestSearchMalformedRecords:
         # upstream {results:[{primaryAccession:123}]} must be 502 provider_error
         # (upstream_uniprot_malformed), never 200 with an empty accession.
         self.state["body"] = {"results": [{"primaryAccession": 123}]}
-        r = self.c.get("/api/v1/search", params={"q": "p53"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53"})
         assert r.status_code == 502
         assert r.json() == {"status": "provider_error", "detail": "upstream_uniprot_malformed"}
 
@@ -365,13 +365,13 @@ class TestSearchMalformedRecords:
         # SIMULASI of postfix probe case 2: upstream {results:[{}]} must be
         # 502 provider_error, distinguished from a genuine empty result set.
         self.state["body"] = {"results": [{}]}
-        r = self.c.get("/api/v1/search", params={"q": "p53"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53"})
         assert r.status_code == 502
         assert r.json()["status"] == "provider_error"
 
     def test_blank_string_accession_is_malformed(self):
         self.state["body"] = {"results": [{"primaryAccession": "   "}, {"primaryAccession": "P04637"}]}
-        r = self.c.get("/api/v1/search", params={"q": "p53"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53"})
         assert r.status_code == 502
         assert r.json()["detail"] == "upstream_uniprot_malformed"
 
@@ -379,7 +379,7 @@ class TestSearchMalformedRecords:
         # results:[] with no Link = a real (empty) biological answer. Must stay
         # 200/not_found — the fix must not swallow the empty-result case.
         self.state["body"] = {"results": []}
-        r = self.c.get("/api/v1/search", params={"q": "p53"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53"})
         assert r.status_code == 200
         b = r.json()
         assert b["results"] == []
@@ -387,7 +387,7 @@ class TestSearchMalformedRecords:
 
     def test_valid_results_pass_through(self):
         self.state["body"] = {"results": [{"primaryAccession": "P04637", "organism": {"scientificName": "Homo sapiens"}}]}
-        r = self.c.get("/api/v1/search", params={"q": "p53"})
+        r = self.c.get("/api/v1/search", params={"entity_type": "protein", "q": "p53"})
         assert r.status_code == 200
         b = r.json()
         assert [x["accession"] for x in b["results"]] == ["P04637"]
