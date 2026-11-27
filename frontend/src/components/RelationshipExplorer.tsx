@@ -97,7 +97,7 @@ export function RelationshipExplorer({ graph }: { graph: RelationshipGraph }) {
                   fill="#55584c"
                   textAnchor="middle"
                 >
-                  {e.label}
+                  {graph.edges.length <= 3 ? e.label : ""}
                 </text>
               </g>
             );
@@ -124,7 +124,7 @@ export function RelationshipExplorer({ graph }: { graph: RelationshipGraph }) {
                 <text
                   x={p.x}
                   y={p.y}
-                  fontSize={11}
+                  fontSize={(n.symbol ?? n.id).length > 7 ? 7 : 11}
                   fill="#25322b"
                   textAnchor="middle"
                   dominantBaseline="middle"

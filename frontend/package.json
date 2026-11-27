@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:regression": "node tests/regression.mjs",
     "test:learning": "node tests/learning-exploration.mjs",
+    "test:slice2": "node tests/slice2-integration.mjs",
+    "stub:backend": "node tests/stub-backend.mjs",
     "capture:screenshots": "node tests/capture-screenshots.mjs",
     "fetch-fonts": "node scripts/fetch-fonts.mjs"
   },

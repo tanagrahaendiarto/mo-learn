@@ -1,48 +1,65 @@
 import type { Metadata } from "next";
-import { searchEntities } from "@/lib/api";
+import { searchEntities, type EntityTypeFilter } from "@/lib/api";
 import { SearchResultsClient } from "./results-client";
 
 export const metadata: Metadata = {
   title: "Search Results",
 };
 
+/** `?type=Gene|Protein|All` (legacy) and `?entity_type=gene|protein|all`. */
+function parseTypeFilter(raw: string | undefined): EntityTypeFilter {
+  const value = raw?.trim().toLowerCase();
+  if (value === "gene") return "gene";
+  if (value === "protein") return "protein";
+  return "all";
+}
+
+function filterLabel(type: EntityTypeFilter): "All" | "Gene" | "Protein" {
+  if (type === "gene") return "Gene";
+  if (type === "protein") return "Protein";
+  return "All";
+}
+
 /**
- * Halaman hasil pencarian moLearn — transkripsi blueprint Stitch
+ * Halaman hasil pencarian moLearn — transkrip blueprint Stitch
  * (`2._hasil_pencarian_molearn/code.html`) ke App Router.
  *
- * Arsitektur fase 1 (disederhanakan, tanpa TanStack Query):
- *  - Server component mengambil hasil `?q=&page_size=&cursor=` lewat
- *    `searchEntities` (fixture lokal saat `NEXT_PUBLIC_DEMO_MODE=true`,
- *    ditandai `isDemo: true`).
- *  - Filter tipe/organisme sisa dijalankan di client di atas hasil
- *    yang sudah diambil (tanpa ulang request).
- *  - Tombol "state demo" pada blueprint (Normal/Loading/Data Parsial/
- *    Kosong) TIDAK ditranskripsikan: di aplikasi nyata state
- *    loading/empty/error muncul dari kondisi data apa adanya.
- *
- * Bug blueprint yang diperbaiki: setiap kartu hasil kini merute ke
- * profil entitasnya sendiri, bukan semuanya ke `?entity=p53`.
+ * Arsitektur:
+ *  - Server component mengambil hasil pertama lewat `searchEntities`
+ *    (fixture lokal saat `NEXT_PUBLIC_DEMO_MODE=true`).
+ *  - Filter tipe dijalankan di SERVER (parameter `entity_type`), bukan
+ *    filter lokal, agar halaman berisi campuran gen+protein yang benar.
+ *  - Cursor dibuang saat q/type/page_size berubah; komponen di-remount
+ *    lewat `key` sehingga pagination tidak membawa state lama.
  */
 export default async function SearchPage(props: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await props.searchParams;
   const q = params.q ?? "";
+  const entityType = parseTypeFilter(params.entity_type ?? params.type);
 
-  const pageSize = params.page_size ? parseInt(params.page_size, 10) : undefined;
+  const parsedPageSize = params.page_size
+    ? parseInt(params.page_size, 10)
+    : undefined;
+  const pageSize =
+    parsedPageSize && parsedPageSize > 0
+      ? Math.min(parsedPageSize, 100)
+      : undefined;
 
   const result = await searchEntities({
     q,
-    page_size: pageSize && pageSize > 0 ? pageSize : undefined,
+    entity_type: entityType,
+    page_size: pageSize,
     cursor: params.cursor,
   });
 
   return (
     <SearchResultsClient
-      key={`${q}:${pageSize ?? ""}`}
+      key={`${q}:${entityType}:${pageSize ?? ""}`}
       result={result}
       initialQuery={q}
-      initialType="All"
+      initialType={filterLabel(entityType)}
       pageSize={pageSize}
     />
   );

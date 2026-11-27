@@ -144,6 +144,11 @@ export default function CollectionPage() {
                       <p className="font-mono text-mono-sm text-primary">
                         {it.symbol ?? it.id} • {it.id}
                       </p>
+                      {it.legacyId && (
+                        <p className="font-body text-body-sm text-on-surface-variant">
+                          Migrated from {it.legacyId}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <dl className="flex flex-col gap-xs font-body text-body-sm text-on-surface-variant">

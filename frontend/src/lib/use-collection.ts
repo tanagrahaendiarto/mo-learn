@@ -46,6 +46,33 @@ function isSavedEntity(value: unknown): value is SavedEntity {
   );
 }
 
+/**
+ * Migrasi identifier lama → identifier kanonik, HANYA untuk pemetaan yang
+ * terverifikasi. Satu-satunya entri: HGNC:11998 → NCBI GeneID 7157
+ * (dibuktikan oleh cross-reference NCBI Gene 7157 dan UniProt P04637).
+ * Record tanpa pemetaan terverifikasi dipertahankan apa adanya.
+ */
+const VERIFIED_LEGACY_GENE_IDS: Record<string, string> = {
+  "HGNC:11998": "7157",
+};
+
+function migrateLegacy(entities: SavedEntity[]): SavedEntity[] {
+  const seen = new Set<string>();
+  const out: SavedEntity[] = [];
+  for (const entity of entities) {
+    const verifiedId =
+      entity.type === "gene" ? VERIFIED_LEGACY_GENE_IDS[entity.id] : undefined;
+    const migrated = verifiedId
+      ? { ...entity, id: verifiedId, legacyId: entity.legacyId ?? entity.id }
+      : entity;
+    const key = collectionKey(migrated.type, migrated.source, migrated.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(migrated);
+  }
+  return out;
+}
+
 function readStored(): SavedEntity[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -87,7 +114,12 @@ export const collectionStore = {
   getSnapshot(): readonly SavedEntity[] {
     if (!hydrated && typeof window !== "undefined") {
       hydrated = true;
-      snapshot = readStored();
+      const stored = readStored();
+      const migrated = migrateLegacy(stored);
+      snapshot = migrated;
+      if (migrated.some((item, i) => item !== stored[i])) {
+        write(migrated);
+      }
     }
     return snapshot;
   },

@@ -28,9 +28,9 @@ const BASE = process.env.REGRESSION_BASE_URL ?? "http://localhost:3000";
 const ROUTES = [
   { path: "/", name: "landing", status: 200 },
   { path: "/search?q=p53&page_size=2", name: "search", status: 200 },
-  { path: "/search?q=p53&page_size=2&type=Gene", name: "search-gene-soon", status: 200 },
+  { path: "/search?q=TP53&page_size=2&type=Gene", name: "search-gene", status: 200 },
   { path: "/entity/protein/P04637", name: "entity-protein", status: 200 },
-  { path: "/entity/gene/HGNC%3A11998", name: "entity-gene-soon", status: 200 },
+  { path: "/entity/gene/7157", name: "entity-gene", status: 200 },
   { path: "/collection", name: "collection", status: 200 },
   { path: "/glosarium", name: "glossary", status: 200 },
   { path: "/this-route-does-not-exist", name: "notfound", status: 404 },
@@ -110,10 +110,26 @@ if (await backendReachable()) {
     waitUntil: "networkidle",
     timeout: 60000,
   });
-  const cardCount = await page.evaluate(
-    () => document.querySelectorAll('a[href^="/entity/protein/"]').length,
+  const counts = await page.evaluate(() => ({
+    protein: document.querySelectorAll('a[href^="/entity/protein/"]').length,
+    gene: document.querySelectorAll('a[href^="/entity/gene/"]').length,
+  }));
+  check("live search renders protein cards", counts.protein > 0, `${counts.protein} cards`);
+  check("live search renders gene cards", counts.gene > 0, `${counts.gene} cards`);
+
+  await page.goto(`${BASE}/search?q=TP53&entity_type=gene&page_size=5`, {
+    waitUntil: "networkidle",
+    timeout: 60000,
+  });
+  const filtered = await page.evaluate(() => ({
+    gene: document.querySelectorAll('a[href^="/entity/gene/"]').length,
+    protein: document.querySelectorAll('a[href^="/entity/protein/"]').length,
+  }));
+  check(
+    "server-side Gene filter returns genes only",
+    filtered.gene > 0 && filtered.protein === 0,
+    `gene=${filtered.gene} protein=${filtered.protein}`,
   );
-  check("live search renders protein cards", cardCount > 0, `${cardCount} cards`);
   await page.close();
 } else {
   console.log("SKIP  live search integration — backend unreachable at /api/backend/api/v1/health");

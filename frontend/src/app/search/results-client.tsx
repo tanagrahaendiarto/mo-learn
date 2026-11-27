@@ -1,33 +1,54 @@
 "use client";
 
 /**
- * Interactive search results (client-side type filter + cursor pagination).
- * Initial data is fetched once by the server component (page), then filtered
- * and paginated locally — without refetching on filter changes.
+ * Interactive search results — server-side type filter + cursor pagination.
+ *
+ * Filtering happens in the backend (`entity_type`), so a page can contain
+ * genes and proteins together. Every filter change discards the cursor and
+ * starts a fresh request; stale responses are ignored and in-flight requests
+ * are aborted. Duplicate records are dropped by `type + source + id`.
  */
 
-import { useMemo, useState } from "react";
-import type { BiologicalEntitySummary, SearchResult } from "@/types/molearn";
+import { useMemo, useRef, useState } from "react";
+import type {
+  BiologicalEntitySummary,
+  ProviderStatus,
+  SearchResult,
+} from "@/types/molearn";
+import type { EntityTypeFilter } from "@/lib/api";
 import { ResultCard } from "@/components/EntityCard";
-import { EmptyState, DemoBanner } from "@/components/states";
+import { EmptyState, DemoBanner, ErrorState, LoadingState } from "@/components/states";
 import { SearchInput } from "@/components/SearchInput";
 import { SourceBadge } from "@/components/SourceBadge";
 import { IconInfo } from "@/components/icons";
 import { PixelButton, PixelButtonLink } from "@/components/PixelButton";
 import { cn } from "@/lib/cn";
-import { IS_DEMO_MODE, searchEntities } from "@/lib/api";
+import { ApiError, IS_DEMO_MODE, searchEntities } from "@/lib/api";
 
 const TYPE_FILTERS = ["All", "Protein", "Gene"] as const;
 type TypeFilter = (typeof TYPE_FILTERS)[number];
 
-/** Display label → domain type */
-function filterToParam(label: TypeFilter): string {
-  const map: Record<TypeFilter, string> = {
-    All: "All",
+function filterToParam(label: TypeFilter): EntityTypeFilter {
+  const map: Record<TypeFilter, EntityTypeFilter> = {
+    All: "all",
     Protein: "protein",
     Gene: "gene",
   };
   return map[label];
+}
+
+const GENE_ID_RE = /^[1-9][0-9]{0,11}$/;
+const ACCESSION_RE =
+  /^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})$/i;
+
+function providerLabel(name: string): string {
+  if (name === "uniprot") return "UniProt";
+  if (name === "ncbi_gene") return "NCBI Gene";
+  return name;
+}
+
+function recordKey(entity: BiologicalEntitySummary): string {
+  return `${entity.type}\u0000${entity.source}\u0000${entity.id}`;
 }
 
 export function SearchResultsClient({
@@ -54,55 +75,152 @@ export function SearchResultsClient({
     result.entities,
   );
   const [cursor, setCursor] = useState<string | undefined>(result.next_cursor);
+  const [providers, setProviders] = useState<ProviderStatus[]>(
+    result.providers ?? [],
+  );
+  const [providerStatus, setProviderStatus] = useState<string | undefined>(
+    result.provider_status,
+  );
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<ApiError | null>(null);
 
-  // Reset pagination when the type filter changes (query & page_size reset
-  // via the `key` on this component in `page.tsx`).
-  function selectType(next: TypeFilter) {
-    setType(next);
-    setEntities(result.entities);
-    setCursor(result.next_cursor);
+  const requestRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  function beginRequest(): { id: number; controller: AbortController } {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return { id: ++requestRef.current, controller };
+  }
+
+  function applyResult(next: SearchResult) {
+    setEntities(next.entities);
+    setCursor(next.next_cursor);
+    setProviders(next.providers ?? []);
+    setProviderStatus(next.provider_status);
+  }
+
+  // Filter change = new query against the backend. Cursor is discarded.
+  async function selectType(nextLabel: TypeFilter) {
+    if (nextLabel === type && !filterError) return;
+    setType(nextLabel);
+    setFilterError(null);
     setLoadError(null);
+    setEntities([]);
+    setCursor(undefined);
+    setProviders([]);
+    setProviderStatus(undefined);
+    setLoading(true);
+
+    const { id, controller } = beginRequest();
+    try {
+      const next = await searchEntities({
+        q: initialQuery,
+        entity_type: filterToParam(nextLabel),
+        page_size: pageSize,
+        signal: controller.signal,
+      });
+      if (id !== requestRef.current) return;
+      applyResult(next);
+    } catch (error) {
+      if (id !== requestRef.current) return;
+      if (error instanceof Error && error.name === "AbortError") return;
+      setFilterError(
+        error instanceof ApiError
+          ? error
+          : new ApiError(502, "Failed to load results"),
+      );
+    } finally {
+      if (id === requestRef.current) setLoading(false);
+    }
   }
 
   async function loadMore() {
     if (!cursor || loading) return;
     setLoading(true);
     setLoadError(null);
+
+    const { id, controller } = beginRequest();
     try {
       const next = await searchEntities({
         q: initialQuery,
+        entity_type: filterToParam(type),
         page_size: pageSize,
         cursor,
+        signal: controller.signal,
       });
+      if (id !== requestRef.current) return;
       setEntities((prev) => {
-        const seen = new Set(prev.map((e) => `${e.type}-${e.id}`));
+        const seen = new Set(prev.map(recordKey));
         return [
           ...prev,
-          ...next.entities.filter((e) => !seen.has(`${e.type}-${e.id}`)),
+          ...next.entities.filter((e) => !seen.has(recordKey(e))),
         ];
       });
       setCursor(next.next_cursor);
+      setProviders(next.providers ?? []);
+      setProviderStatus(next.provider_status);
     } catch (error) {
+      if (id !== requestRef.current) return;
+      if (error instanceof Error && error.name === "AbortError") return;
       // Keep already-loaded results visible.
       setLoadError(
         error instanceof Error ? error.message : "Failed to load more results",
       );
     } finally {
-      setLoading(false);
+      if (id === requestRef.current) setLoading(false);
     }
   }
 
-  // Local filter over already-fetched results.
-  const filtered = useMemo(() => {
-    const t = filterToParam(type);
-    return entities.filter((e) => t === "All" || e.type === t);
-  }, [entities, type]);
+  const failedProviders = useMemo(
+    () => providers.filter((p) => p.status === "error"),
+    [providers],
+  );
+  const showPartialProviderWarning =
+    providerStatus === "partial" || failedProviders.length > 0;
 
   const hasPair =
-    filtered.some((e) => e.type === "gene") &&
-    filtered.some((e) => e.type === "protein");
+    entities.some((e) => e.type === "gene") &&
+    entities.some((e) => e.type === "protein");
+
+  const trimmedQuery = initialQuery.trim();
+  const isGeneIdQuery = GENE_ID_RE.test(trimmedQuery);
+  const isAccessionQuery = ACCESSION_RE.test(trimmedQuery);
+
+  const emptyCopy = (() => {
+    if (isGeneIdQuery && filterToParam(type) === "protein") {
+      return {
+        title: "GeneID Excluded by Filter",
+        description: `${trimmedQuery} is an NCBI GeneID. The Protein filter excludes gene records. Switch to Gene or All.`,
+      };
+    }
+    if (isAccessionQuery && filterToParam(type) === "gene") {
+      return {
+        title: "Protein Accession Excluded by Filter",
+        description: `${trimmedQuery} is a UniProt accession. The Gene filter excludes protein records. Switch to Protein or All.`,
+      };
+    }
+    if (isGeneIdQuery || isAccessionQuery) {
+      return {
+        title: "Identifier Not Found",
+        description: `No record matched the exact identifier ${trimmedQuery}. Check the identifier or clear the type filter.`,
+      };
+    }
+    if (providerStatus === "partial") {
+      return {
+        title: "No Results From Available Providers",
+        description:
+          "One provider failed and the other returned no matches. This is not the same as confirming that no record exists.",
+      };
+    }
+    return {
+      title: "No Entities Found",
+      description:
+        "We couldn't find a gene or protein matching that keyword. Check the symbol spelling or try an exact GeneID or UniProt accession.",
+    };
+  })();
 
   return (
     <main className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
@@ -122,17 +240,26 @@ export function SearchResultsClient({
                 : "Entity Directory"}
             </h1>
             <p className="mt-xs font-body text-body-sm tabular-nums text-on-surface-variant">
-              Showing {filtered.length} biological {filtered.length === 1 ? "entity" : "entities"}
+              Showing {entities.length} biological{" "}
+              {entities.length === 1 ? "entity" : "entities"}
+              {showPartialProviderWarning ? " from available providers" : ""}
             </p>
           </div>
 
-          <div className="flex items-center gap-sm">
-            <SourceBadge source={result.isDemo ? "Local (demo)" : "UniProt"} />
+          <div className="flex flex-wrap items-center gap-sm">
+            {result.isDemo ? (
+              <SourceBadge source="Local (demo)" />
+            ) : (
+              <>
+                <SourceBadge source="UniProt" />
+                <SourceBadge source="NCBI Gene" />
+              </>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Gene vs Protein identification note (when present). */}
+      {/* Gene vs Protein identification note (when both are present). */}
       {(result.disambiguation || hasPair) && (
         <aside className="mb-lg flex items-center gap-md rounded-md border border-outline-subtle bg-info-container p-md text-on-info-container">
           <IconInfo className="h-7 w-7 shrink-0" />
@@ -146,48 +273,107 @@ export function SearchResultsClient({
         </aside>
       )}
 
+      {/* Partial provider failure: healthy results stay visible. */}
+      {showPartialProviderWarning && (
+        <aside
+          role="status"
+          className="mb-lg flex items-start gap-md rounded-md border border-outline-subtle bg-warning-container p-md text-on-warning-container"
+        >
+          <IconInfo className="h-7 w-7 shrink-0" />
+          <div>
+            <p className="font-label text-label-lg">
+              Some providers did not respond
+            </p>
+            <p className="font-body text-body-sm">
+              {failedProviders.length > 0
+                ? `${failedProviders
+                    .map(
+                      (p) =>
+                        `${providerLabel(p.name)}${
+                          p.detail ? ` (${p.detail})` : ""
+                        }`,
+                    )
+                    .join(", ")} failed. Results from the other provider are still valid and shown below.`
+                : "One provider failed. Results from the healthy provider are still valid and shown below."}
+            </p>
+          </div>
+        </aside>
+      )}
+
       {/* Demo data marker (only in demo / fixture mode). */}
       {result.isDemo && <DemoBanner visible={true} />}
 
-      {/* Type filter controls */}
-      <section className="mb-lg flex flex-col justify-between gap-md border-b border-outline-subtle pb-md sm:flex-row sm:items-center">
-        <div className="flex items-center gap-sm">
+      {/* Type filter controls (server-side) */}
+      <section className="mb-lg border-b border-outline-subtle pb-md">
+        <div
+          className="flex flex-wrap items-center gap-sm"
+          role="group"
+          aria-label="Filter by entity type"
+        >
           <span className="font-label text-label-md text-on-surface-variant">
             Type:
           </span>
-          {TYPE_FILTERS.map((filter) => {
-            const isDisabled = !IS_DEMO_MODE && filter === "Gene";
-            return (
-              <button
-                key={filter}
-                type="button"
-                disabled={isDisabled}
-                onClick={() => selectType(filter)}
-                className={cn(
-                  "rounded-md border border-outline-subtle px-md py-xs font-label text-label-md",
-                  filter === type
-                    ? "bg-primary text-on-primary"
-                    : "bg-surface-card text-on-surface-card hover:bg-muted-green",
-                  isDisabled && "cursor-not-allowed opacity-50",
-                )}
-              >
-                {filter}
-                {isDisabled && " (soon)"}
-              </button>
-            );
-          })}
+          {TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              aria-pressed={filter === type}
+              onClick={() => selectType(filter)}
+              disabled={loading}
+              className={cn(
+                "rounded-md border border-outline-subtle px-md py-xs font-label text-label-md",
+                filter === type
+                  ? "bg-primary text-on-primary"
+                  : "bg-surface-card text-on-surface-card hover:bg-muted-green",
+                loading && "cursor-wait opacity-60",
+              )}
+            >
+              {filter}
+            </button>
+          ))}
         </div>
+
+        {!IS_DEMO_MODE && filterToParam(type) !== "protein" && (
+          <p className="mt-sm font-body text-body-sm text-on-surface-variant">
+            Gene name search currently covers human genes only (NCBI taxid
+            9606). Exact GeneID lookup is not restricted.
+          </p>
+        )}
       </section>
 
-      {/* Results grid / empty */}
-      {filtered.length > 0 ? (
+      {/* Results grid / loading / error / empty */}
+      {loading && entities.length === 0 ? (
+        <LoadingState />
+      ) : filterError ? (
+        <ErrorState
+          title={
+            filterError.status === 429
+              ? "A Provider Is Rate-Limiting Requests"
+              : filterError.status === 504
+                ? "A Provider Timed Out"
+                : "Unable to Load Results"
+          }
+          description={filterError.detail}
+          action={
+            <PixelButton
+              variant="primary"
+              size="md"
+              onClick={() => selectType(type)}
+            >
+              Try Again
+            </PixelButton>
+          }
+        />
+      ) : entities.length > 0 ? (
         <section className="grid grid-cols-1 gap-lg md:grid-cols-2">
-          {filtered.map((entity) => (
-            <ResultCard key={`${entity.type}-${entity.id}`} entity={entity} />
+          {entities.map((entity) => (
+            <ResultCard key={recordKey(entity)} entity={entity} />
           ))}
         </section>
       ) : (
         <EmptyState
+          title={emptyCopy.title}
+          description={emptyCopy.description}
           action={
             <PixelButtonLink href="/search?q=TP53" size="sm">
               Reset to TP53 Example

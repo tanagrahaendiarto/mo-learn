@@ -210,7 +210,7 @@ if (!DEMO) {
    ============================================================ */
 
 check("relationship label present", bodyText.includes("cross-reference"));
-check("relationship evidence present", /Cross-reference from/.test(bodyText));
+check("relationship evidence present", bodyText.includes("UniProt cross-reference GeneID"));
 check("selected node details present", bodyText.includes("Selected node"));
 check("accessible list heading present", bodyText.includes("Relationships"));
 
@@ -250,45 +250,80 @@ for (const t of terms) {
 }
 
 /* ============================================================
-   E. Gene template (demo mode only)
+   E. Gene profile (NCBI Gene, live + demo)
    ============================================================ */
 
-if (DEMO) {
-  status = await goto("/entity/gene/HGNC%3A11998");
-  check("gene template loads", status === 200, `status ${status}`);
-  const geneText = await page.evaluate(() => document.body.textContent ?? "");
-  for (const h of [
-    "About",
-    "Gene function",
-    "Synonyms",
-    "Chromosomal location",
-    "Related proteins",
-    "Source & evidence",
-    "Demo",
-  ]) {
-    check(`gene template: ${h}`, geneText.includes(h));
-  }
-  check("gene template has honest unavailable field", geneText.includes("not available yet"));
-  // Related protein link navigates to a protein profile.
-  const relHref = await page.evaluate(() => {
-    const a = [...document.querySelectorAll("a")].find((x) =>
-      /\/entity\/protein\//.test(x.getAttribute("href") ?? ""),
-    );
-    return a?.getAttribute("href") ?? null;
-  });
-  check("gene related-protein link present", Boolean(relHref), relHref ?? "none");
+status = await goto("/entity/gene/7157");
+check("gene profile loads", status === 200, `status ${status}`);
+const geneText = await page.evaluate(() => document.body.textContent ?? "");
+for (const h of [
+  "Original scientific annotation",
+  "Synonyms",
+  "Cross-references",
+  "Related protein names from NCBI",
+  "Source & evidence",
+  "Advanced details",
+  "Exploration modules",
+  "Study Companion",
+]) {
+  check(`gene profile: ${h}`, geneText.includes(h));
+}
+check("gene profile shows GeneID 7157", geneText.includes("7157"));
+check("gene profile shows organism", geneText.includes("Homo sapiens"));
+check("gene profile is not Coming Soon", !geneText.includes("Coming Soon"));
+check(
+  "gene→protein evidence label present",
+  geneText.includes("GeneID cross-reference"),
+);
+// Related protein link navigates to the canonical protein accession.
+const relHref = await page.evaluate(() => {
+  const a = [...document.querySelectorAll("a")].find((x) =>
+    /\/entity\/protein\//.test(x.getAttribute("href") ?? ""),
+  );
+  return a?.getAttribute("href") ?? null;
+});
+check("gene related-protein link present", Boolean(relHref), relHref ?? "none");
 
-  // Demo badge on demo protein profile.
+if (DEMO) {
+  check("gene profile labelled Demo", geneText.includes("Demo"));
   await goto("/entity/protein/P04637");
   const demoBody = await page.evaluate(() => document.body.textContent ?? "");
   check("demo profile labelled Demo", demoBody.includes("Demo"));
-  check("demo profile has beginner summary", demoBody.includes("guardian") || demoBody.includes("Guardian"));
+  check(
+    "demo profile has beginner summary",
+    demoBody.includes("guardian") || demoBody.includes("Guardian"),
+  );
 } else {
-  // Live mode: gene stays Coming Soon (honest, no speculative endpoint).
-  status = await goto("/entity/gene/HGNC%3A11998");
-  const liveGene = await page.evaluate(() => document.body.textContent ?? "");
-  check("live gene still Coming Soon", status === 200 && liveGene.includes("Coming Soon"));
+  check(
+    "gene profile shows NCBI summary text",
+    geneText.length > 500,
+  );
+  check(
+    "gene profile shows chromosome location",
+    geneText.includes("17p13.1"),
+  );
 }
+
+/* ============================================================
+   G. Collection keeps gene and protein records distinct
+   ============================================================ */
+
+await clearCollection();
+await goto("/entity/gene/7157");
+await saveButton().click();
+await page.waitForTimeout(300);
+await goto("/entity/protein/P04637");
+await saveButton().click();
+await page.waitForTimeout(300);
+const bothCount = await collectionCount();
+check("collection holds gene and protein separately", bothCount === 2, `${bothCount} items`);
+await goto("/collection");
+const bothText = await page.evaluate(
+  () => document.querySelector("main article")?.parentElement?.textContent ?? "",
+);
+check("collection shows GeneID 7157", bothText.includes("7157"));
+check("collection shows protein accession", bothText.includes("P04637"));
+await clearCollection();
 
 /* ============================================================
    Responsive: no overflow / clipped headings on new pages
@@ -303,7 +338,7 @@ const RESP_ROUTES = [
   "/collection",
   "/glosarium",
   "/entity/protein/P04637",
-  ...(DEMO ? ["/entity/gene/HGNC%3A11998"] : []),
+  "/entity/gene/7157",
 ];
 
 for (const vp of VIEWPORTS) {
