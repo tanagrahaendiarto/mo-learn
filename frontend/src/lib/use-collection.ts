@@ -1,7 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { SavedEntity } from "@/types/molearn";
+import type { SavedEntity, EntityType, EntitySource } from "@/types/molearn";
+import { collectionKey } from "@/types/molearn";
 
 /**
  * Penyimpanan lokal "Koleksi Saya" sebagai external store React
@@ -13,9 +14,14 @@ import type { SavedEntity } from "@/types/molearn";
  *  - Klien menghidrasi snapshot dari localStorage secara lazy pada
  *    pemanggilan `getSnapshot` pertama (di-guard flag modul, jadi
  *    aman dipanggil berulang dan bebas efek `setState`).
- *  - Setiap mutasi (hapus / muat demo) ditulis ke localStorage lalu
- *    memnotifikasi subscriber; perubahan tetap tampil in-memory
+ *  - Setiap mutasi (tambah / hapus / muat demo) ditulis ke localStorage
+ *    lalu memnotifikasi subscriber; perubahan tetap tampil in-memory
  *    bila persistensi gagal (private mode / kuota penuh).
+ *
+ * Identitas kanonik item = `type + source + id` (lihat `collectionKey`).
+ * Dedup memakai kunci ini agar record sama dari sumber berbeda tidak
+ * tertukar. Record lama tanpa `source` DIPERTAHANKAN dengan provenance
+ * unknown (namespace `unknown`), TIDAK digolongkan sebagai demo.
  *
  * Kunci penyimpanan: `molearn_collection` (sesuai blueprint halaman 4).
  */
@@ -91,9 +97,41 @@ export const collectionStore = {
     return EMPTY;
   },
 
-  /** Hapus item (kunci `type + id` unik lintas tipe). */
-  remove(type: SavedEntity["type"], id: string): void {
-    snapshot = snapshot.filter((x) => !(x.type === type && x.id === id));
+  /**
+   * Tambah item. Idempotent: bila record dengan kunci kanonik yang sama
+   * (`type + source + id`) sudah ada, tidak menambah duplikat.
+   */
+  add(item: SavedEntity): void {
+    collectionStore.getSnapshot(); // pastikan terhidrasi
+    const key = collectionKey(item.type, item.source, item.id);
+    if (
+      snapshot.some(
+        (x) => collectionKey(x.type, x.source, x.id) === key,
+      )
+    ) {
+      return; // sudah tersimpan — cegah duplikat
+    }
+    snapshot = [...snapshot, item];
+    write(snapshot);
+    notify();
+  },
+
+  /** true bila record dengan kunci kanonik tersebut sudah tersimpan. */
+  has(type: EntityType, source: EntitySource | undefined, id: string): boolean {
+    collectionStore.getSnapshot(); // pastikan terhidrasi
+    const key = collectionKey(type, source, id);
+    return snapshot.some(
+      (x) => collectionKey(x.type, x.source, x.id) === key,
+    );
+  },
+
+  /** Hapus item (kunci `type + source + id` unik lintas tipe/sumber). */
+  remove(type: EntityType, source: EntitySource | undefined, id: string): void {
+    collectionStore.getSnapshot(); // pastikan terhidrasi
+    const key = collectionKey(type, source, id);
+    snapshot = snapshot.filter(
+      (x) => collectionKey(x.type, x.source, x.id) !== key,
+    );
     write(snapshot);
     notify();
   },
@@ -115,6 +153,8 @@ export function useCollection() {
   );
   return {
     items,
+    add: collectionStore.add,
+    has: collectionStore.has,
     remove: collectionStore.remove,
     loadDemo: collectionStore.loadDemo,
   };

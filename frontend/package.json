@@ -9,6 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:regression": "node tests/regression.mjs",
+    "test:learning": "node tests/learning-exploration.mjs",
+    "capture:screenshots": "node tests/capture-screenshots.mjs",
     "fetch-fonts": "node scripts/fetch-fonts.mjs"
   },
   "dependencies": {
