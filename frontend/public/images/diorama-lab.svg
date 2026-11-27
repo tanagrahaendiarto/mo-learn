@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420" role="img" aria-label="Diorama pixel-art isometrik laboratorium biologi molekuler moLearn dengan heliks DNA, mikroskop, tanaman, model molekul, dan ilmuwan ramah">
+  <!-- Latar: permukaan krem + grid pixel halus (design system: bg-pixel-grid) -->
+  <rect width="960" height="420" fill="#DFE9D8"/>
+  <g shape-rendering="crispEdges">
+    <!-- Grid 16px (alpha rendah) -->
+    <g fill="#C9C7BA">
+      <rect x="0" y="396" width="960" height="4"/>
+      <rect x="0" y="380" width="960" height="2"/>
+      <rect x="0" y="364" width="960" height="2"/>
+    </g>
+
+    <!-- Lantai lab (selokan isometrik sederhana: dua tingkat) -->
+    <rect x="0" y="384" width="960" height="36" fill="#244D38"/>
+    <rect x="0" y="384" width="960" height="4" fill="#79A85B"/>
+
+    <!-- Meja kayu -->
+    <rect x="60" y="300" width="560" height="24" fill="#EFC65B" stroke="#25322B" stroke-width="4"/>
+    <rect x="80" y="324" width="24" height="60" fill="#244D38" stroke="#25322B" stroke-width="4"/>
+    <rect x="560" y="324" width="24" height="60" fill="#244D38" stroke="#25322B" stroke-width="4"/>
+
+    <!-- ===== Heliks DNA (standar kiri) ===== -->
+    <rect x="120" y="120" width="120" height="180" fill="none"/>
+    <!-- Rungai (kunci) di antara dua untai -->
+    <g fill="#EFC65B" stroke="#25322B" stroke-width="2">
+      <rect x="138" y="130" width="60" height="12"/>
+      <rect x="132" y="170" width="72" height="12"/>
+      <rect x="138" y="210" width="60" height="12"/>
+      <rect x="150" y="250" width="40" height="12"/>
+      <rect x="162" y="282" width="24" height="12"/>
+    </g>
+    <!-- Untai A (hijau hutan) & Untai B (biru molekuler) -->
+    <g fill="#244D38" stroke="#25322B" stroke-width="2">
+      <rect x="116" y="126" width="16" height="16"/>
+      <rect x="108" y="166" width="16" height="16"/>
+      <rect x="116" y="206" width="16" height="16"/>
+      <rect x="130" y="246" width="16" height="16"/>
+      <rect x="146" y="278" width="16" height="16"/>
+    </g>
+    <g fill="#5398BE" stroke="#25322B" stroke-width="2">
+      <rect x="196" y="126" width="16" height="16"/>
+      <rect x="204" y="166" width="16" height="16"/>
+      <rect x="196" y="206" width="16" height="16"/>
+      <rect x="182" y="246" width="16" height="16"/>
+      <rect x="166" y="278" width="16" height="16"/>
+    </g>
+    <!-- Standar & label -->
+    <rect x="140" y="300" width="64" height="12" fill="#25322B"/>
+    <rect x="116" y="292" width="112" height="10" fill="#FFFEF8" stroke="#25322B" stroke-width="2"/>
+
+    <!-- ===== Mikroskop vintage (tengah meja) ===== -->
+    <g>
+      <rect x="300" y="216" width="56" height="24" fill="#5398BE" stroke="#25322B" stroke-width="3"/>
+      <rect x="312" y="240" width="32" height="32" fill="#244D38" stroke="#25322B" stroke-width="3"/>
+      <rect x="332" y="248" width="28" height="20" fill="#79A85B" stroke="#25322B" stroke-width="2"/>
+      <rect x="288" y="272" width="64" height="12" fill="#EFC65B" stroke="#25322B" stroke-width="3"/>
+      <rect x="276" y="284" width="88" height="16" fill="#244D38" stroke="#25322B" stroke-width="3"/>
+      <!-- Lampu sorot -->
+      <rect x="340" y="258" width="8" height="8" fill="#FFFEF8"/>
+    </g>
+
+    <!-- ===== Gelas & labu (kanan meja) ===== -->
+    <g>
+      <!-- Labu erlenmeyer berisi larutan hijau -->
+      <rect x="420" y="268" width="20" height="12" fill="#FFFEF8" stroke="#25322B" stroke-width="2"/>
+      <rect x="408" y="280" width="44" height="20" fill="#79A85B" stroke="#25322B" stroke-width="2"/>
+      <rect x="416" y="284" width="8" height="8" fill="#FFFEF8"/>
+      <!-- Tabung uji -->
+      <rect x="480" y="256" width="16" height="44" fill="#FFFEF8" stroke="#25322B" stroke-width="2"/>
+      <rect x="484" y="276" width="8" height="20" fill="#5398BE"/>
+      <!-- Tabung kedua -->
+      <rect x="508" y="252" width="16" height="48" fill="#FFFEF8" stroke="#25322B" stroke-width="2"/>
+      <rect x="512" y="272" width="8" height="24" fill="#EFC65B"/>
+      <!-- Gelembung -->
+      <rect x="486" y="268" width="4" height="4" fill="#FFFEF8"/>
+      <rect x="514" y="264" width="4" height="4" fill="#FFFEF8"/>
+    </g>
+
+    <!-- ===== Tanaman botani (pojok kiri) ===== -->
+    <g>
+      <rect x="32" y="336" width="48" height="48" fill="#EFC65B" stroke="#25322B" stroke-width="3"/>
+      <rect x="40" y="344" width="32" height="8" fill="#25322B"/>
+      <rect x="50" y="296" width="12" height="48" fill="#79A85B" stroke="#25322B" stroke-width="2"/>
+      <rect x="28" y="304" width="24" height="12" fill="#244D38" stroke="#25322B" stroke-width="2"/>
+      <rect x="60" y="288" width="24" height="12" fill="#244D38" stroke="#25322B" stroke-width="2"/>
+      <rect x="36" y="272" width="20" height="12" fill="#79A85B" stroke="#25322B" stroke-width="2"/>
+    </g>
+
+    <!-- ===== Model molekul mengambang (kanan atas) ===== -->
+    <g>
+      <rect x="688" y="96" width="40" height="40" fill="#5398BE" stroke="#25322B" stroke-width="3"/>
+      <rect x="744" y="72" width="28" height="28" fill="#EFC65B" stroke="#25322B" stroke-width="3"/>
+      <rect x="748" y="136" width="24" height="24" fill="#CEFFAC" stroke="#25322B" stroke-width="3"/>
+      <rect x="724" y="104" width="24" height="8" fill="#25322B"/>
+      <rect x="736" y="100" width="8" height="40" fill="#25322B"/>
+      <rect x="712" y="132" width="40" height="8" fill="#25322B"/>
+    </g>
+
+    <!-- ===== Ilmuwan ramah (kanan) ===== -->
+    <g>
+      <!-- Kepala -->
+      <rect x="796" y="216" width="48" height="48" fill="#FFFEF8" stroke="#25322B" stroke-width="3"/>
+      <!-- Rambut -->
+      <rect x="792" y="208" width="56" height="16" fill="#25322B"/>
+      <!-- Mata -->
+      <rect x="808" y="232" width="8" height="8" fill="#25322B"/>
+      <rect x="828" y="232" width="8" height="8" fill="#25322B"/>
+      <!-- Senyum -->
+      <rect x="808" y="248" width="24" height="6" fill="#25322B"/>
+      <rect x="804" y="246" width="4" height="4" fill="#25322B"/>
+      <rect x="836" y="246" width="4" height="4" fill="#25322B"/>
+      <!-- Jubah lab -->
+      <rect x="788" y="264" width="64" height="84" fill="#FFFEF8" stroke="#25322B" stroke-width="3"/>
+      <!-- Kancing jubah -->
+      <rect x="816" y="280" width="8" height="8" fill="#EFC65B" stroke="#25322B" stroke-width="2"/>
+      <rect x="816" y="300" width="8" height="8" fill="#EFC65B" stroke="#25322B" stroke-width="2"/>
+      <rect x="816" y="320" width="8" height="8" fill="#EFC65B" stroke="#25322B" stroke-width="2"/>
+      <!-- Kantong jubah -->
+      <rect x="796" y="328" width="16" height="12" fill="#DFE9D8" stroke="#25322B" stroke-width="2"/>
+      <!-- Tangan memegang tabung -->
+      <rect x="848" y="288" width="16" height="40" fill="#FFFEF8" stroke="#25322B" stroke-width="2"/>
+      <rect x="868" y="272" width="16" height="40" fill="#FFFEF8" stroke="#25322B" stroke-width="2"/>
+      <rect x="872" y="288" width="8" height="20" fill="#5398BE"/>
+    </g>
+
+    <!-- ===== Aksen bintang / partikel pixel ===== -->
+    <g fill="#EFC65B">
+      <rect x="636" y="152" width="8" height="8"/>
+      <rect x="652" y="176" width="6" height="6"/>
+      <rect x="616" y="120" width="6" height="6"/>
+    </g>
+    <g fill="#79A85B">
+      <rect x="700" y="220" width="8" height="8"/>
+      <rect x="760" y="160" width="6" height="6"/>
+    </g>
+  </g>
+</svg>
