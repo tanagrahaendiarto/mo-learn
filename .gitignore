@@ -21,3 +21,23 @@ Thumbs.db
 # Scratch / cache
 *.log
 *.tmp
+
+# Frontend
+dependencies/
+node_modules/
+.next/
+.env.local
+.env.*.local
+screenshots/
+*.tsbuildinfo
+
+tsconfig.tsbuildinfo
+.DS_Store
+
+
+graphify-out/
+*.graphify_*
+
+# Graphify
+frontend/src/graphify-out/
+*.graphify_*
