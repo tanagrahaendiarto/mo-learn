@@ -1185,3 +1185,122 @@ to provider HEAD requests. No paid AI calls were made.
 
 **Milestone gate: GO for local Slice 4 verification.** Commit, push, and
 deployment remain separate actions.
+
+## 19. Slice 5 - Kesiapan Produksi
+
+Branch `feat/production-readiness`, berdasarkan `master` `e46a7fc`. Slice ini
+tidak menambah fitur. Fokusnya: menutup temuan keamanan, membatasi biaya AI,
+memperkuat keandalan provider, menyiapkan konfigurasi produksi, dan menghasilkan
+bukti regresi akhir. Tidak ada commit, push, deploy publik, atau panggilan AI
+berbayar selama verifikasi ini.
+
+### 19.1 Dependensi dan Kerentanan
+
+- Next.js dinaikkan dari `16.2.6` ke `16.4.6`, bersama `eslint-config-next`.
+  Versi lama membawa temuan kritis (RCE, SSRF, cache/DoS). `npm audit` pada
+  proyek dan pada instalasi bersih melaporkan **0 kerentanan** (362 paket).
+- Backend: `uv lock --check --offline` lulus; `uv audit --locked` bersih untuk
+  Windows dan `x86_64-unknown-linux-gnu` (29 paket).
+- Build produksi tetap lulus dengan Next 16.4.6: lint, `tsc --noEmit`, dan
+  `next build` (6 rute).
+
+### 19.2 Batas Permintaan dan Proxy
+
+- Proxy `/api/backend/[...path]` memakai `maxDuration = 70`, batas waktu 60 detik
+  yang juga menutupi pembacaan body, `redirect: "error"`, dan hanya meneruskan
+  JSON dari upstream. Balasan non-JSON menghasilkan `502/503 upstream_unavailable`
+  dengan pesan tersanitasi.
+- `lib/api.ts` memakai batas waktu 60 detik, `redirect: "error"`, dan memetakan
+  timeout ke `504 upstream_timeout` serta kegagalan koneksi ke `502
+  connection_error`. Detail internal backend tidak diteruskan ke browser.
+- Header keamanan: CSP `frame-ancestors 'none'; object-src 'none'; base-uri
+  'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy`, dan `poweredByHeader: false`. Diverifikasi pada respons
+  produksi.
+- AI: pembacaan body dibatasi 5 detik (`408 request_body_timeout`), kode reviewer
+  diperiksa di FastAPI, dan AI tetap nonaktif secara default.
+
+### 19.3 Keandalan Provider
+
+- NCBI: setiap operasi menerima `deadline`, paging `retstart`, validasi payload,
+  penanganan 404, deteksi `UpstreamMalformed`, verifikasi `geneid`, serta
+  parameter `tool`/`email` (`MOLEARN_NCBI_CONTACT_EMAIL`).
+- Pencarian dan profil berbagi satu deadline 35 detik; offset kursor dibatasi
+  `2_147_483_647`. GeneID dibatasi `[0-9]{1,12}` lalu dinormalisasi.
+- Log aplikasi berformat JSON: rute, status, dan durasi. Access log Uvicorn
+  dimatikan di produksi agar tidak mencatat header/body mentah.
+- Footer menampilkan atribusi dan tautan kebijakan NCBI.
+
+### 19.4 Pemindaian Keamanan
+
+| Pemeriksaan | Cakupan | Hasil |
+| --- | --- | --- |
+| Gitleaks (riwayat) | 16 commit, 4,36 MB | 0 kebocoran |
+| Gitleaks (pohon kandidat) | 151 berkas | 0 kebocoran |
+| Gitleaks (bundel klien) | 747 KB JS hasil build | 0 kebocoran |
+| String rahasia di JS klien | variabel env dan fixture | 0 kecocokan |
+| Semgrep `p/default` | 76 berkas, 452 aturan | 0 temuan |
+| `npm audit` | proyek dan instalasi bersih | 0 kerentanan |
+| `uv audit --locked` | Windows dan Linux x86_64 | 0 kerentanan |
+
+Pemeriksaan browser produksi menemukan landmark `<main>` bersarang pada halaman
+search, profil, koleksi, glosarium, error, dan 404. Setiap halaman kini memakai
+satu landmark; diuji pada tujuh rute di viewport mobile.
+
+### 19.5 Bukti Regresi
+
+| Lapisan | Hasil |
+| --- | --- |
+| Backend offline | 150 lulus, 23 di-deselect |
+| Provider hidup | 22 lulus (NCBI, UniProt, RCSB, AlphaFold, STRING) |
+| Browser rute/tata letak | 75/75 |
+| Browser pembelajaran | 97/97 |
+| Integrasi Slice 2 | 43/43 (36 live, 7 simulasi; termasuk 3 cek proxy baru) |
+| Eksplorasi Slice 4 | 49/49 (41 live, 4 mock, 4 keamanan proxy) |
+| AI tiruan Slice 3 | 34/34 |
+
+Pemeriksaan browser memakai build produksi di port terpisah dengan backend lokal
+dan model tiruan. Tidak ada panggilan LLM berbayar. Screenshot 1440x900,
+768x1024, dan 390x844 diambil dan diperiksa. Uji provider "hidup" berarti
+provider asli dipanggil lewat build lokal, bukan lewat URL publik.
+
+Pada build produksi lokal, landing page menjawab dalam 4-36 ms dengan 141-151
+KiB JavaScript, sedangkan halaman search dan profil memerlukan 4,0-6,3 detik
+karena menunggu provider asli. Transisi rute hanya memuat 9-18 KiB JavaScript.
+Angka ini bukan pengukuran hosting; latensi dari Singapura harus diukur ulang
+setelah deploy.
+
+### 19.6 Evaluasi Hosting
+
+- **Vercel (frontend) + Render (backend)**, keduanya region Singapura.
+  Biaya dasar **USD 27/bulan** (Vercel Pro 20 + Render 0.5 CPU/512 MB 7).
+- Render Free ditolak: tidur setelah 15 menit, bangun sekitar 1 menit, 0,1 CPU,
+  dan risiko suspensi. Cold start dapat menghabiskan timeout proxy 60 detik.
+- Vercel Hobby hanya untuk penggunaan personal/non-komersial. Jika panitia
+  mengonfirmasi kelayakan, biaya turun ke USD 7/bulan sebelum pajak dan
+  penggunaan. Batas fungsi Hobby 300 detik.
+- `render.yaml` disiapkan (`rootDir: backend`, health check
+  `/api/v1/health`, 1 worker, `--limit-concurrency 16`, graceful shutdown 45
+  detik, rahasia `sync: false`). Panduan lengkap ada di `docs/DEPLOYMENT.md`.
+
+### 19.7 Batasan yang Wajib Diungkapkan
+
+- Kuota AI bersifat per proses (`MOLEARN_AI_MAX_CALLS_PER_PROCESS=30`), reset
+  saat restart, dan tidak menjadi batas belanja global. Percobaan yang timeout
+  tetap dapat ditagih.
+- Tidak ada database server; koleksi tersimpan di browser dan tidak tersinkron.
+- Rute ilmiah publik di Render tidak punya kuota per pengguna; hanya AI yang
+  memerlukan kode reviewer.
+- STRING menampilkan asosiasi fungsional, bukan bukti ikatan fisik.
+- Email kontak NCBI belum diisi; harus dipasok pemilik produk sebelum rilis.
+- Angka pilot belum ada. Instrumen pilot dan skrip demo ada di
+  `docs/COMPETITION.md`; hasil hanya boleh dilaporkan setelah dijalankan.
+
+### 19.8 Gate
+
+**GO untuk commit dan deploy terbatas setelah persetujuan**, dengan syarat:
+email kontak NCBI diisi, AI tetap nonaktif saat rilis, dan UAT produksi
+(`docs/COMPETITION.md`) dijalankan pada URL hosting sebelum peserta diundang.
+**NO-GO untuk klaim "siap produksi penuh"**: belum ada deploy publik, UAT
+hosting, atau data pilot. Semua perubahan masih belum di-commit pada branch
+`feat/production-readiness`.

@@ -38,3 +38,25 @@
   and 34 mocked Slice 3 checks. No paid AI requests were made.
 - **Gate: GO for local Slice 4 verification.** Production readiness and
   deployment remain separate milestones.
+
+## Slice 5 — production readiness
+
+- **Branch:** `feat/production-readiness` from `master` `e46a7fc`.
+- **Dependencies:** Next.js 16.2.6 → 16.4.6 cleared critical advisories;
+  `npm audit` reports 0 vulnerabilities. `uv audit --locked` clean on Windows
+  and Linux x86_64.
+- **Hardening:** proxy and client timeouts, upstream JSON enforcement, redirect
+  rejection, security headers, NCBI deadlines/paging/validation, bodies read
+  with a 5-second cap, structured JSON request logs, strict GeneID parsing,
+  NCBI attribution in the footer, and a single `<main>` landmark per page.
+- **Verified:** 150 offline backend tests, 22 live provider cases, and browser
+  suites at 75 route/layout, 97 learning, 43 Slice 2 (36 live, 7 simulated),
+  49 Slice 4, and 34 mocked Slice 3 checks. Gitleaks (history, candidate tree,
+  client bundle), Semgrep (76 files), dependency audits, lint, typecheck, and
+  the production build passed. No paid AI calls were made.
+- **Release assets:** `README.md`, `render.yaml`, `docs/DEPLOYMENT.md`,
+  `docs/COMPETITION.md`, updated env examples and AI guide.
+- **Hosting:** Vercel Pro + Render 0.5 CPU/512 MB, USD 27/month at base rates.
+  Vercel Hobby is non-commercial only.
+- **Gate: GO for commit and a gated deploy after approval.** No public deploy,
+  hosted UAT, or pilot has run yet; the NCBI contact mailbox is still unset.

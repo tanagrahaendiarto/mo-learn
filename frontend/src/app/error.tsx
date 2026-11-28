@@ -17,7 +17,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <main className="mx-auto w-full max-w-[48rem] px-md py-3xl md:px-xl">
+    <div className="mx-auto w-full max-w-[48rem] px-md py-3xl md:px-xl">
       <ErrorState
         title="Unable to Load Data"
         description={
@@ -32,6 +32,6 @@ export default function GlobalError({
           </div>
         }
       />
-    </main>
+    </div>
   );
 }

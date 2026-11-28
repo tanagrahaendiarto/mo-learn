@@ -6,6 +6,8 @@ Missing upstream fields stay null / empty; nothing is inferred.
 404 body is fixed:
 {"status":"not_found","detail":"gene_not_found"}.
 """
+import re
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -74,13 +76,13 @@ def ncbi_error_response(exc: ProviderError) -> JSONResponse:
 )
 def gene_profile(gene_id: str):
     gid = gene_id.strip()
-    if not gid.isdigit() or int(gid) <= 0:
+    if not re.fullmatch(r"[0-9]{1,12}", gid) or int(gid) == 0:
         raise HTTPException(
             status_code=422,
             detail="invalid gene_id: expected a positive numeric NCBI GeneID, e.g. 7157",
         )
     try:
-        profile, _ = load_gene(gid)
+        profile, _ = load_gene(str(int(gid)))
     except ProviderError as e:
         return ncbi_error_response(e)
     if profile is None:

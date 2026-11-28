@@ -10,7 +10,7 @@ from ..ai_schemas import LearningFailure
 MAX_RESPONSE_BYTES = 32_768
 MAX_OUTPUT_TOKENS = 600
 REQUEST_TIMEOUT_SECONDS = 20
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error").getChild(__name__)
 
 
 async def complete(

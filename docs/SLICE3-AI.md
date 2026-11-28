@@ -17,6 +17,13 @@ FastAPI. Enter only the separate reviewer code in the UI; it stays in page memor
 for the entity session. Use HTTPS outside loopback. Revoke access by changing the
 code or disabling AI and restarting. Demo pages keep AI disabled.
 
+For hosted setup, see [the deployment guide](DEPLOYMENT.md#environment-reference).
+Create a reviewer code in a password manager using at least 32 random
+URL-safe characters. Give the code to an authorized reviewer through a
+separate secure channel. In the entity profile, enter it in reviewer access
+and explicitly request an explanation or submit a question. Do not enter the
+LLM key in the UI. Rotate the shared code after a demonstration or pilot.
+
 DeepSeek defaults to `deepseek-flash` in non-thinking JSON mode. The adapter
 sends no tools, sequence data, or conversation history. It caps output at 600
 tokens and model time at 20 seconds. The API limits body size to 8 KiB and model
@@ -60,7 +67,7 @@ source evidence. Passage selection can still miss relevant evidence.
 |---|---|
 | 403 | `access_required` |
 | 404 | `not_found` for a missing canonical record |
-| 411 / 413 / 415 | Missing body length, oversized body, or unsupported media type |
+| 408 / 411 / 413 / 415 | Slow body, missing body length, oversized body, or unsupported media type |
 | 422 | Invalid identifier, malformed request, or invalid question |
 | 429 | `rate_limited` or `quota_exhausted` |
 | 502 | `provider_error`, including malformed output or unverified citations |
@@ -83,12 +90,15 @@ and prompt isolation does not guarantee that the model follows its instructions.
   frontend port 3002 and disabled frontend port 3000. Screenshots go in
   `frontend/screenshots/`. This exercises the real proxy and FastAPI routes
   with saved biological records and a simulated model.
-- Bounded live review: configure a dedicated funded key and a separate
-  reviewer code, use one local backend worker, and set the process cap to four.
+- Bounded live review, **only after explicit paid-call approval**: configure a
+  dedicated funded key and a separate reviewer code, use one local backend
+  worker, and set the process cap to four.
   Set `MOLEARN_VERIFY_LIVE_AI=true` for the test process. Run
   `uv run --locked --env-file .env pytest -m live tests/test_ai_live.py -s -q`.
   It makes at most four paid attempts, without automatic retries. Review each
   successful claim against the linked source before recording the result.
+  For the initial hosted release, use the smaller two-call
+  [production smoke test](COMPETITION.md#production-smoke-test).
 
 Official provider reference: [DeepSeek models and pricing](https://api-docs.deepseek.com/quick_start/pricing/),
 [JSON output](https://api-docs.deepseek.com/guides/json_mode/),

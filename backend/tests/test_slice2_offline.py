@@ -124,6 +124,25 @@ class TestNcbiFailures:
         with pytest.raises(ncbi.UpstreamMalformed):
             ncbi.retrieve(self._client(handler), "7157")
 
+    def test_mismatched_gene_record_is_upstream_malformed(self):
+        with self._client(lambda _: httpx.Response(200, text=gene_xml())) as client:
+            with pytest.raises(ncbi.UpstreamMalformed):
+                ncbi.retrieve(client, "22059")
+
+    def test_esearch_requests_only_one_page_at_offset(self):
+        def handler(request):
+            assert request.url.params["retmax"] == "3"
+            assert request.url.params["retstart"] == "91"
+            return httpx.Response(200, json={"esearchresult": {"idlist": ["7157"]}})
+
+        with self._client(handler) as client:
+            assert ncbi.esearch(client, "TP53", retmax=3, offset=91) == ["7157"]
+
+    def test_esearch_bad_payload_is_upstream_malformed(self):
+        with self._client(lambda _: httpx.Response(200, text="<html>maintenance</html>")) as client:
+            with pytest.raises(ncbi.UpstreamMalformed):
+                ncbi.esearch(client, "TP53")
+
     def test_connect_error_is_provider_error(self):
         def handler(request):
             raise httpx.ConnectError("SIMULATED transport failure", request=request)
@@ -146,6 +165,10 @@ class TestSlice2Cursor:
     def test_empty(self):
         assert decode_cursor(None) == (None, 0, False)
         assert encode_cursor(None, 0) is None
+
+    def test_offset_outside_provider_integer_range(self):
+        with pytest.raises(ValueError, match="cursor_invalid"):
+            decode_cursor(encode_cursor(None, 2_147_483_648))
 
     def test_invalid_rejected(self):
         for bad in ["", "!!!", "a" * 401, "eyJ4IjoxfQ"]:  # last: no u/n keys

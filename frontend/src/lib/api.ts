@@ -128,6 +128,10 @@ function resolveUrl(path: string): string {
   return `${BACKEND_API_URL}${path}`;
 }
 
+function requestUrl(path: string): URL {
+  return new URL(resolveUrl(path), typeof window === "undefined" ? undefined : window.location.origin);
+}
+
 /* ---------- Mapping helpers ---------- */
 
 /** Normalisasi namespace sumber backend → EntitySource kanonik. */
@@ -357,7 +361,7 @@ export async function searchEntities(
     };
   }
 
-  const url = new URL(resolveUrl("/api/v1/search"), typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+  const url = requestUrl("/api/v1/search");
   url.searchParams.set("q", q);
   url.searchParams.set("entity_type", params.entity_type ?? "all");
   if (params.page_size && params.page_size > 0) {
@@ -372,8 +376,10 @@ export async function searchEntities(
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
-      signal: params.signal,
-      // 60s timeout handled by proxy
+      signal: params.signal
+        ? AbortSignal.any([params.signal, AbortSignal.timeout(60_000)])
+        : AbortSignal.timeout(60_000),
+      redirect: "error",
     });
 
     const body = await response.json();
@@ -405,7 +411,8 @@ export async function searchEntities(
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new ApiError(502, `Connection error: ${error instanceof Error ? error.message : "Unknown"}`);
+    if (error instanceof Error && error.name === "TimeoutError") throw new ApiError(504, "upstream_timeout");
+    throw new ApiError(502, "connection_error");
   }
 }
 
@@ -438,13 +445,15 @@ export async function fetchEntityProfile(
     type === "protein"
       ? `/api/v1/entities/protein/${encodeURIComponent(id)}`
       : `/api/v1/entities/gene/${encodeURIComponent(id)}`;
-  const url = new URL(resolveUrl(path), typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+  const url = requestUrl(path);
 
   try {
     const response = await fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(60_000),
+      redirect: "error",
     });
 
     const body = await response.json();
@@ -462,7 +471,8 @@ export async function fetchEntityProfile(
     return mapGeneProfile(body as BackendGeneProfile);
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError(502, `Connection error: ${error instanceof Error ? error.message : "Unknown"}`);
+    if (error instanceof Error && error.name === "TimeoutError") throw new ApiError(504, "upstream_timeout");
+    throw new ApiError(502, "connection_error");
   }
 }
 

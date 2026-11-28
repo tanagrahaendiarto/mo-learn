@@ -70,4 +70,4 @@ if __name__ == "__main__":
     ncbi.set_client(httpx.Client(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, content=gene)), base_url=ncbi.BASE
     ))
-    uvicorn.run(app, host="127.0.0.1", port=8014, access_log=False)
+    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("MOLEARN_TEST_MOCK_PORT", "8014")), access_log=False)

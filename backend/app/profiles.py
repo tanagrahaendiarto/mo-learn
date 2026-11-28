@@ -1,4 +1,6 @@
 """Shared provider-backed profile retrieval for entity routes and learning."""
+import time
+
 from .adapters import ncbi, uniprot
 from .schemas import GeneProfile, GeneXref, Organism, ProteinLink, ProteinProfile
 
@@ -10,7 +12,8 @@ def load_protein(accession: str) -> ProteinProfile | None:
 
 def load_gene(gene_id: str) -> tuple[GeneProfile | None, str | None]:
     """Return the gene profile and the retrieval time for its optional UniProt links."""
-    record = ncbi.retrieve(ncbi.get_client(), gene_id)
+    deadline = time.monotonic() + 35
+    record = ncbi.retrieve(ncbi.get_client(), gene_id, deadline=deadline)
     if record is None:
         return None, None
 
@@ -20,7 +23,7 @@ def load_gene(gene_id: str) -> tuple[GeneProfile | None, str | None]:
     links: list[ProteinLink] = []
     links_retrieved_at = None
     try:
-        raw, _ = uniprot.search(uniprot.get_client(), f"xref:geneid-{gene_id}", 10, None)
+        raw, _ = uniprot.search(uniprot.get_client(), f"xref:geneid-{record['gene_id']}", 10, None, deadline=deadline)
         links_retrieved_at = uniprot.now_iso()
         for item in raw:
             summary = uniprot.map_summary(item, links_retrieved_at)

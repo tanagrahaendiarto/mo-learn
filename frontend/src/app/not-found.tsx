@@ -7,7 +7,7 @@ import { IconMagnifier, IconDna } from "@/components/icons";
  */
 export default function NotFound() {
   return (
-    <main className="mx-auto flex w-full max-w-[36rem] flex-col items-center gap-lg px-md py-3xl text-center">
+    <div className="mx-auto flex w-full max-w-[36rem] flex-col items-center gap-lg px-md py-3xl text-center">
       <div className="flex items-center gap-lg rounded-lg border border-outline-subtle bg-surface-card p-xl shadow-card">
         <IconDna className="h-12 w-12" />
         <p className="font-headline text-headline-lg text-error">404</p>
@@ -36,6 +36,6 @@ export default function NotFound() {
           Go Home
         </Link>
       </div>
-    </main>
+    </div>
   );
 }

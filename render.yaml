@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: molearn-api
+    runtime: python
+    plan: 0.5c-512mb
+    region: singapore
+    branch: master
+    rootDir: backend
+    autoDeployTrigger: "off"
+    maxShutdownDelaySeconds: 60
+    healthCheckPath: /api/v1/health
+    buildCommand: uv sync --locked --no-dev
+    startCommand: uv run --locked --no-dev uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers 1 --limit-concurrency 16 --timeout-keep-alive 5 --timeout-graceful-shutdown 45 --no-access-log
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14.10"
+      - key: UV_VERSION
+        value: "0.13.10"
+      - key: MOLEARN_NCBI_CONTACT_EMAIL
+        sync: false

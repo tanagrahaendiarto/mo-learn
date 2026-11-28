@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const BACKEND_API_URL = process.env.BACKEND_API_URL?.replace(/\/+$/, "") ?? "";
 const AI_POST_PATHS = new Set(["/api/v1/ai/explain", "/api/v1/ai/ask"]);
 const MAX_AI_BODY_BYTES = 8192;
+export const maxDuration = 70;
 
 /**
  * Identifier patterns copied from the backend contract:
@@ -39,7 +40,7 @@ function isAllowed(pathname: string, search: string): boolean {
 export async function GET(request: NextRequest) {
   if (!BACKEND_API_URL) {
     return NextResponse.json(
-      { status: "misconfigured", detail: "BACKEND_API_URL tidak di-set" },
+      { status: "misconfigured", detail: "backend_not_configured" },
       { status: 500 },
     );
   }
@@ -49,47 +50,46 @@ export async function GET(request: NextRequest) {
 
   if (!isAllowed(backendPath, url.search)) {
     return NextResponse.json(
-      { status: "not_found", detail: "Endpoint tidak diizinkan" },
+      { status: "not_found", detail: "endpoint_not_allowed" },
       { status: 404 },
     );
   }
 
   const backendUrl = `${BACKEND_API_URL}${backendPath}${url.search}`;
 
+  const deadline = AbortSignal.timeout(60_000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
-
     const response = await fetch(backendUrl, {
       method: "GET",
       headers: { Accept: "application/json" },
-      signal: controller.signal,
+      signal: deadline,
       cache: "no-store",
+      redirect: "error",
     });
-
-    clearTimeout(timeout);
-
-    // Forward the upstream body and status unchanged (JSON contract).
-    const body = await response.text();
-    const contentType = response.headers.get("content-type") ?? "application/json";
-    return new NextResponse(body, {
-      status: response.status,
-      headers: { "content-type": contentType },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    const isTimeout = message.includes("abort") || message.includes("timeout");
-    return NextResponse.json(
-      { status: "provider_error", detail: isTimeout ? "upstream_timeout" : "connection_error" },
-      { status: isTimeout ? 504 : 502 },
-    );
+    return await forwardJson(response);
+  } catch {
+    return deadline.aborted
+      ? apiError(504, "provider_error", "upstream_timeout")
+      : apiError(502, "provider_error", "connection_error");
   }
 }
 
-function aiError(httpStatus: number, status: string, detail: string) {
+function apiError(httpStatus: number, status: string, detail: string) {
   return NextResponse.json({ status, detail }, {
     status: httpStatus,
     headers: { "Cache-Control": "no-store" },
+  });
+}
+
+async function forwardJson(response: Response) {
+  const contentType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json") {
+    await response.body?.cancel();
+    return apiError(response.status === 503 ? 503 : 502, "provider_error", "upstream_unavailable");
+  }
+  return new NextResponse(await response.text(), {
+    status: response.status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 }
 
@@ -97,10 +97,10 @@ export async function POST(request: NextRequest) {
   const url = request.nextUrl;
   const path = url.pathname.slice("/api/backend".length);
   if (!AI_POST_PATHS.has(path) || url.search) {
-    return aiError(405, "method_not_allowed", "endpoint_not_allowed");
+    return apiError(405, "method_not_allowed", "endpoint_not_allowed");
   }
   if (!BACKEND_API_URL || process.env.MOLEARN_AI_UI_ENABLED !== "true") {
-    return aiError(503, "unavailable", "ai_not_configured");
+    return apiError(503, "unavailable", "ai_not_configured");
   }
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
@@ -110,15 +110,15 @@ export async function POST(request: NextRequest) {
     !URL.canParse(origin) || new URL(origin).host !== request.headers.get("host")
     || (fetchSite && fetchSite !== "same-origin")
   )) {
-    return aiError(403, "access_required", "origin_not_allowed");
+    return apiError(403, "access_required", "origin_not_allowed");
   }
   const access = request.headers.get("x-molearn-ai-access") ?? "";
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(access)) {
-    return aiError(403, "access_required", "reviewer_access_required");
+    return apiError(403, "access_required", "reviewer_access_required");
   }
   const mediaType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
   if (mediaType !== "application/json" || !request.body) {
-    return aiError(415, "bad_request", "expected_json");
+    return apiError(415, "bad_request", "expected_json");
   }
 
   const deadline = AbortSignal.timeout(40_000);
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       if (done) break;
       if (length + value.byteLength > body.byteLength) {
         cancelRead();
-        return aiError(413, "bad_request", "body_too_large");
+        return apiError(413, "bad_request", "body_too_large");
       }
       body.set(value, length);
       length += value.byteLength;
@@ -151,26 +151,22 @@ export async function POST(request: NextRequest) {
       redirect: "error",
       signal: deadline,
     });
-    const payload = await response.text();
-    return new NextResponse(payload, {
-      status: response.status,
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-    });
+    return await forwardJson(response);
   } catch {
     return deadline.aborted
-      ? aiError(504, "timeout", "upstream_timeout")
-      : aiError(502, "provider_error", "connection_error");
+      ? apiError(504, "timeout", "upstream_timeout")
+      : apiError(502, "provider_error", "connection_error");
   } finally {
     deadline.removeEventListener("abort", cancelRead);
     reader.releaseLock();
   }
 }
 export async function PUT() {
-  return NextResponse.json({ status: "method_not_allowed", detail: "PUT tidak diizinkan" }, { status: 405 });
+  return apiError(405, "method_not_allowed", "endpoint_not_allowed");
 }
 export async function PATCH() {
-  return NextResponse.json({ status: "method_not_allowed", detail: "PATCH tidak diizinkan" }, { status: 405 });
+  return apiError(405, "method_not_allowed", "endpoint_not_allowed");
 }
 export async function DELETE() {
-  return NextResponse.json({ status: "method_not_allowed", detail: "DELETE tidak diizinkan" }, { status: 405 });
+  return apiError(405, "method_not_allowed", "endpoint_not_allowed");
 }
