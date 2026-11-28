@@ -217,25 +217,13 @@ function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
             </PixelCard>
           )}
 
-          {/* 6. Related biological entities (relationship explorer) */}
+          {/* 7. Related biological entities (relationship explorer) */}
           <PixelCard className="p-lg">
             <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
               Related entities
             </h2>
             <RelationshipExplorer graph={graph} />
           </PixelCard>
-
-          {/* 7. Exploration modules */}
-          <section>
-            <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
-              Exploration modules
-            </h2>
-            <ExplorationModules
-              modules={modules}
-              exportConfig={exportConfigFor(profile)}
-              entity={IS_DEMO_MODE ? undefined : { type: "protein", id: profile.id }}
-            />
-          </section>
 
           {/* 9. Study Companion */}
           <StudyCompanion key={`companion:${profile.id}`} entityId={profile.id} entityName={profile.name} type="protein" />
@@ -324,6 +312,18 @@ function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
           </PixelCard>
         </div>
       </div>
+
+      {/* 7. Exploration modules — full-width row so expanded modules can use the page width. */}
+      <section>
+        <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
+          Exploration modules
+        </h2>
+        <ExplorationModules
+          modules={modules}
+          exportConfig={exportConfigFor(profile)}
+          entity={IS_DEMO_MODE ? undefined : { type: "protein", id: profile.id }}
+        />
+      </section>
     </div>
   );
 }

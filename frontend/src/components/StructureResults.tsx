@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { SourceBadge } from "@/components/SourceBadge";
+import { StructureViewer } from "@/components/StructureViewer";
 import type { StructureRecord } from "@/lib/exploration";
 
 function StructurePreview({ url, predicted }: { url: string; predicted: boolean }) {
@@ -55,6 +56,7 @@ export function StructureResults({ records }: { records: StructureRecord[] }) {
         </p>
       )}
       {record.preview_url && <StructurePreview key={record.preview_url} url={record.preview_url} predicted={predicted} />}
+      <StructureViewer key={`${record.source}:${record.source_id}`} record={record} />
       <div className="flex flex-wrap gap-sm">
         <a className="text-primary underline" href={record.source_url}>Open 3D view on {record.source}</a>
         {record.downloads.map(({ format, url }) => <a key={format} className="text-primary underline" href={url}>Download {format}</a>)}

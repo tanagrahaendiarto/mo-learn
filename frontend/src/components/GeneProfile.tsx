@@ -120,14 +120,6 @@ export function GeneProfile({
             <RelationshipExplorer graph={graph} />
           </PixelCard>
 
-          {/* 7. Exploration modules */}
-          <section>
-            <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
-              Exploration modules
-            </h2>
-            <ExplorationModules modules={modules} exportConfig={exportConfig} entity={isDemo ? undefined : { type: "gene", id: gene.id }} />
-          </section>
-
           {/* 9. Study Companion */}
           <StudyCompanion key={`companion:${gene.id}`} entityId={gene.id} entityName={gene.name} type="gene" />
         </div>
@@ -248,6 +240,14 @@ export function GeneProfile({
           </PixelCard>
         </div>
       </div>
+
+      {/* 7. Exploration modules — full-width row so expanded modules can use the page width. */}
+      <section>
+        <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
+          Exploration modules
+        </h2>
+        <ExplorationModules modules={modules} exportConfig={exportConfig} entity={isDemo ? undefined : { type: "gene", id: gene.id }} />
+      </section>
     </div>
   );
 }
