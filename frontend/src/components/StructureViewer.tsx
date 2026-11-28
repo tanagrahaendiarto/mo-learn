@@ -14,7 +14,6 @@ import {
 } from "@/lib/structure-viewer-rules";
 
 type Plugin = import("molstar/lib/mol-plugin/context").PluginContext;
-type Model = import("molstar/lib/mol-model/structure/model/model").Model;
 type Structure = import("molstar/lib/mol-model/structure/structure/structure").Structure;
 
 const REPRESENTATION = { cartoon: "cartoon", stick: "ball-and-stick" } as const;
@@ -88,6 +87,7 @@ function chainTable(structure: Structure) {
 export function StructureViewer({ record }: { record: StructureRecord }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const pluginRef = useRef<Plugin | null>(null);
+  const cifRef = useRef<string | null>(null);
   const generation = useRef(0);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -149,18 +149,16 @@ export function StructureViewer({ record }: { record: StructureRecord }) {
         }
         pluginRef.current = plugin;
 
-        const data = await plugin.builders.data.rawData({ data: text, label: record.source_id });
-        const trajectory = await plugin.builders.structure.parseTrajectory(data, "mmcif");
-        const model = await plugin.builders.structure.createModel(trajectory);
-        const modelData = model.data;
-        if (!modelData) throw new Error("model_unavailable");
-        if (stale()) return;
-
+        // Remember the parsed text so assembly changes rebuild from the same trusted bytes.
+        cifRef.current = text;
         const { ModelSymmetry } = await import("molstar/lib/mol-model-formats/structure/property/symmetry");
-        const assemblies = ModelSymmetry.Provider.get(modelData)?.assemblies ?? [];
+        const probeData = await plugin.builders.data.rawData({ data: text, label: record.source_id });
+        const probeTrajectory = await plugin.builders.structure.parseTrajectory(probeData, "mmcif");
+        const probeModel = await plugin.builders.structure.createModel(probeTrajectory);
+        const assemblies = probeModel.data ? ModelSymmetry.Provider.get(probeModel.data)?.assemblies ?? [] : [];
         const ids = record.kind === "predicted" ? [] : assemblies.map((assembly) => assembly.id);
 
-        const built = await applyStructure(plugin, modelData, null, record);
+        const built = await applyStructure(plugin, text, record.source_id, null, record.coverage);
         if (stale()) return;
         setTargetChains(built.targets);
         setAtomCount(built.atoms);
@@ -168,6 +166,7 @@ export function StructureViewer({ record }: { record: StructureRecord }) {
         setStatus("ready");
       } catch (cause) {
         if (stale()) return;
+        if (process.env.NODE_ENV !== "production") console.error("[structure-viewer]", cause);
         setError(describeError(cause));
         setStatus("error");
       }
@@ -262,14 +261,14 @@ export function StructureViewer({ record }: { record: StructureRecord }) {
   const changeAssembly = useCallback((next: string | null) => {
     void (async () => {
       const plugin = pluginRef.current;
-      const model = plugin?.managers.structure.hierarchy.current.structures[0]?.model?.cell.obj?.data;
-      if (!plugin || !model) return;
+      const cif = cifRef.current;
+      if (!plugin || !cif) return;
       setStatus("loading");
       setError(null);
       setResidue(null);
       const mine = ++generation.current;
       try {
-        const built = await applyStructure(plugin, model, next, record);
+        const built = await applyStructure(plugin, cif, record.source_id, next, record.coverage);
         if (mine !== generation.current) return;
         setTargetChains(built.targets);
         setAtomCount(built.atoms);
@@ -278,6 +277,7 @@ export function StructureViewer({ record }: { record: StructureRecord }) {
         setStatus("ready");
       } catch (cause) {
         if (mine !== generation.current) return;
+        if (process.env.NODE_ENV !== "production") console.error("[structure-viewer]", cause);
         setError(describeError(cause));
         setStatus("error");
       }
@@ -359,31 +359,36 @@ function ViewerButton({ label, onClick, disabled }: { label: string; onClick: ()
 /** Build one structure with target/other/ligand/water components; never relabel coordinates as an assembly. */
 async function applyStructure(
   plugin: Plugin,
-  model: Model,
+  cif: string,
+  label: string,
   assemblyId: string | null,
-  record: StructureRecord,
+  coverage: readonly { chain: string }[],
 ): Promise<{ targets: string[]; atoms: number }> {
   await plugin.clear();
+  const data = await plugin.builders.data.rawData({ data: cif, label });
+  const trajectory = await plugin.builders.structure.parseTrajectory(data, "mmcif");
+  // createStructure needs a Model ref; passing raw model data fails with "Could not find node 'undefined'".
+  const model = await plugin.builders.structure.createModel(trajectory);
   const structure = await plugin.builders.structure.createStructure(
-    model as never,
+    model,
     assemblyId ? { name: "assembly", params: { id: assemblyId } } : { name: "model", params: {} },
   );
-  const data = structure.cell?.obj?.data;
-  if (!data) throw new Error("structure_unavailable");
+  const structureData = structure.cell?.obj?.data;
+  if (!structureData) throw new Error("structure_unavailable");
   // Only claim an assembly when Mol* actually built one with that id.
   if (assemblyId && structure.cell?.obj?.label !== `Assembly ${assemblyId}`) {
     await plugin.clear();
     throw new Error("assembly_missing");
   }
-  if (data.elementCount > ATOM_LIMIT) {
+  if (structureData.elementCount > ATOM_LIMIT) {
     await plugin.clear();
     throw new Error("structure_too_large");
   }
 
-  const chains = chainTable(data);
-  const targets = pickTargetChains(chains, record.coverage);
+  const chains = chainTable(structureData);
+  const targets = pickTargetChains(chains, coverage);
   const targetAuth = new Set(chains.filter((c) => targets.includes(c.labelAsymId)).map((c) => c.authAsymId));
-  const otherAuth = new Set(chains.filter((c) => c.polymer && !c.labelAsymId.match(/^$/) && !targets.includes(c.labelAsymId)).map((c) => c.authAsymId));
+  const otherAuth = new Set(chains.filter((c) => c.polymer && !targets.includes(c.labelAsymId)).map((c) => c.authAsymId));
 
   const { MolScriptBuilder: MS } = await import("molstar/lib/mol-script/language/builder");
   const byAuth = (ids: string[]) => MS.core.set.has([MS.set(...ids), MS.ammp("auth_asym_id")]);
@@ -406,7 +411,7 @@ async function applyStructure(
   if (water) await builder.addRepresentation(water, { type: "ball-and-stick", color: "element-symbol", size: "uniform", sizeParams: { value: 0.2 } });
 
   plugin.managers.camera.reset(undefined, 0);
-  return { targets, atoms: data.elementCount };
+  return { targets, atoms: structureData.elementCount };
 }
 
 async function readResidue(loci: import("molstar/lib/mol-model/loci").Loci): Promise<ResidueIdentity | null> {

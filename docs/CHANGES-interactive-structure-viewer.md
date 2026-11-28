@@ -52,27 +52,48 @@ Two temporary artifacts were created and removed during the session, both inside
 |---|---|---|
 | Pure rules | `node --test tests/structure-viewer-rules.test.mjs` | **5 pass, 0 fail** |
 | Types | `npx tsc --noEmit -p tsconfig.json` | **0 errors** |
-| Lint | `npx eslint src --max-warnings=0` | **0 errors, 1 warning** (`react-hooks/exhaustive-deps`, `StructureViewer.tsx:178`) — still failing the `--max-warnings=0` gate |
+| Lint | `npx eslint src --max-warnings=0` | **clean** |
+| Build | `npm run build` | **compiles**, `.next/static` 3.9 MB |
 | RCSB CORS | `fetch` with `Origin: http://127.0.0.1:3001` | `200`, `access-control-allow-origin: *` for `6XRE.cif` and `6XRE-assembly1.cif` |
 | AlphaFold CORS | same | `AF-P04637-F1-model_v6.cif` reachable, permitted |
 | Backend contract | `GET /api/v1/entities/protein/P04637/structure` | `200`, 7 records; coverage author chains: 6XRE=`M`, 7XZZ/9R04/9R2M=`K,L,M,N`, 8R1F=`C`, 8R1G=`C,F`, AlphaFold=`A` |
 | 6XRE identity | RCSB GraphQL, selected fields only | `6XRE_13` = p53, P04637, label/auth chain `M`; other 12 entities are RNA polymerase II subunits → chain M is matched from data, never hardcoded |
 | Layout baseline | Playwright Edge, computed widths | expanded card **632 px** inside a **960 px** profile grid at 1440 px; 461/704 at 768; 358/358 at 390; no page overflow at any width |
 
+### Browser verification (commit `e060b24`)
+
+Run against the real dev server with Edge, `http://127.0.0.1:3001/entity/protein/P04637`:
+
+| Gate | Measured result |
+|---|---|
+| Real render | canvas drawn, **68,542 atoms**, **12.9% non-background pixels** read back from WebGL |
+| Canvas size desktop | 924 × 478 px, no page overflow at 1440 px |
+| Canvas size mobile | **322 × 358 px** at 390 px, no page overflow (protein and gene pages) |
+| Target chain | reported as **chain M** for 6XRE, derived from backend coverage + parsed polymer chains |
+| Assembly | selector offers "Deposited coordinates (asymmetric unit)" and "Biological assembly 1"; switching relabels provenance |
+| Picking | `LEU B 115 (label chain B, label seq 115, model 1, copy ASM_1)` — operator identity survives |
+| Controls | representation toggle, target-only, focus target, reset view, hide/reopen all exercised |
+| First render | ~6.0 s cold on this laptop (999 ms compile, rest fetch + parse) |
+
+Screenshots: `docs/screenshots/viewer-module-desktop.png`, `viewer-desktop-1440.png`, `viewer-mobile-390.png` (git-ignored by repo policy).
+
+### Bug found and fixed during verification
+
+`createStructure` needs a **Model state ref**, not raw model data. The first pushed version passed the model object and failed with `Could not find node 'undefined'`, so the viewer only ever displayed its fallback. Fixed in `e060b24` by rebuilding from the stored mmCIF text: `rawData → parseTrajectory → createModel → createStructure`, reused for every assembly switch.
+
 ## NOT verified — do not claim these
 
-- **No browser render of the new viewer.** Mol* never ran in a browser this session. No screenshot, no picking test, no assembly switch test, no close/reopen cleanup test, no WebGL absence test.
-- **No `npm run build`.** No chunk sizes measured, no proof the viewer chunk is absent before the Structure module opens. Bundle numbers do not exist yet.
-- **No cold/warm render timing.** Nothing to report.
-- **No backend pytest re-run**; no frontend regression suite re-run.
-- Assembly correctness, residue picking identity string, and race handling are **written but unproven**.
+- Bundle split: no network trace proving the viewer chunk is absent before the Structure module opens.
+- Cold/warm render timing beyond the single cold measurement above; no FPS/RAM figures.
+- No backend pytest re-run; no full frontend regression suite re-run.
+- Races (delay A, select B) and repeated close/reopen WebGL context counting are written but not asserted automatically.
 
 ## Known gaps a teammate must close
 
-1. `npx eslint src --max-warnings=0` exits non-zero on one `react-hooks/exhaustive-deps` warning at `StructureViewer.tsx:178` (cleanup reads `generation.current` through the ref). Fix by capturing the counter in the effect body.
-2. `npm run build`, then measure: total route JS, the lazy viewer chunk, first-render time, and confirm no coordinate request before the Structure module opens.
-3. Playwright Edge checks: render, resize, residue click returns the identity string, 6XRE target = chain M only, assembly 1 label vs deposited label, rapid A→B switch (B wins), close/reopen without a growing WebGL context count, viewer failure still leaving metadata/downloads usable, 1440/1024/768/390 px with no overflow.
-4. `normalize` review: `readResidue` maps `label_seq_id` to `0` when not finite — check that a non-polymer ligand does not display a misleading `label seq 0`.
+1. ~~ESLint warning~~ — fixed; `npx eslint src --max-warnings=0` is now clean.
+2. Bundle split: trace the network to prove the lazy viewer chunk is absent before the module opens, then record chunk bytes.
+3. Automate the gates already verified by hand: render, picking identity, assembly label, rapid A→B switch, close/reopen cleanup, 390/768/1024/1440 px overflow.
+4. Repeated close/reopen WebGL context counting and the A→B switch race are not yet automated.
 
 ## Files touched, at a glance
 
