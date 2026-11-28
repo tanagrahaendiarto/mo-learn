@@ -862,3 +862,163 @@ menumpuk label; layout mobile menumpuk satu kolom.
 ---
 
 *Laporan ini dibuat dalam Bahasa Indonesia sesuai ketentuan tugas.*
+
+## 17. Slice 3 — AI Learning
+
+- **Branch:** `feat/fullstack-slice3-ai`, dari merge Slice 2 `0ec41cf`.
+- **Fitur:** Penjelasan pemula dan tanya jawab untuk GeneID NCBI dan accession
+  UniProtKB. Kedua panel meminta generasi hanya saat pengguna menekan tombol.
+  Profil, anotasi asli, dan relasi Slice 2 tetap tersedia tanpa AI.
+- **Kontrak:** `POST /api/v1/ai/explain` dan `POST /api/v1/ai/ask`. Next.js hanya
+  meneruskan dua rute POST ini. FastAPI mengambil konteks sendiri, memvalidasi
+  bentuk keluaran dan ID sitasi per klaim, lalu mengembalikan URL sumber resmi.
+- **Kontrol penggunaan:** DeepSeek Flash non-thinking; batas ukuran, token, waktu,
+  laju, dan konkurensi. AI nonaktif secara default. Mode peninjau memerlukan kode
+  akses terpisah. Kuota proses hilang saat restart dan tidak dianggap sebagai
+  batas pengeluaran global yang persisten.
+- **Reproduksibilitas:** Versi aplikasi dan paket `0.3.0`. `backend/uv.lock`
+  disertakan; pembaruan lockfile hanya mengubah versi paket MoLearn.
+- **Dokumentasi:** [API dan runbook](docs/SLICE3-AI.md),
+  [README backend](backend/README.md), dan [checkpoint](docs/PROJECT-CHECKPOINT.md).
+
+### 17.1 Bukti pengujian
+
+| Pemeriksaan | Hasil |
+|---|---|
+| Regresi backend offline | PASS — 123/123, termasuk 18 tes AI dengan transport model simulasi |
+| API backend live | PASS — 18/18 terhadap NCBI dan UniProtKB |
+| Lint, TypeScript, build produksi frontend | PASS |
+| Playwright regresi rute dan tata letak | PASS — 75/75, termasuk pencarian live |
+| Playwright learning/exploration | PASS — 97/97 dengan sumber live |
+| Playwright Slice 2 | PASS — 40/40 (33 live, 7 simulasi), termasuk kegagalan provider parsial |
+| Playwright Slice 3 | PASS — 34/34; Next.js dan FastAPI nyata, data rekaman sumber dan model simulasi |
+| Semgrep `p/default` | PASS — 0 temuan pada 32 target |
+| `uv lock --check --offline` | PASS |
+| Konektivitas DeepSeek | PASS — `/models` menjawab HTTP 401 tanpa kredensial |
+| DeepSeek dengan API key aplikasi | FAIL milestone — 3/4 kasus live lulus; jawaban kontekstual p53 ditahan validator |
+
+**Spot-check ilmiah simulasi.** Anotasi UniProtKB `P04637` mendukung ikatan
+DNA dan regulasi transkripsi. Entri tersebut mencantumkan `Homo sapiens`
+(9606) dan cross-reference GeneID `7157`. Ringkasan NCBI Gene `7157`
+menyatakan bahwa TP53 mengode protein dengan domain pengikatan DNA dan
+aktivasi transkripsi. Pemeriksaan ini membandingkan contoh keluaran mock
+dengan rekaman sumber.
+
+**Tampilan:** Enam screenshot `frontend/screenshots/slice3-mock-*.png` diambil
+dan diperiksa. Pada desktop 1440×900, tablet 768×1024, dan mobile 390×844,
+judul dan isi panel muat. Teks jawaban terbaca, label AI dan tautan sumber
+terlihat, dan tombol utama terukur 44 px.
+
+Graphify diperbarui dari working tree: 836 node dan 1.799 edge.
+
+### 17.2 Verifikasi DeepSeek live — 28 November 2026
+
+Empat panggilan generasi terautentikasi dilakukan dari Chromium melalui
+build produksi Next.js, proxy, dan FastAPI lokal. Tidak ada pengulangan
+otomatis atau panggilan kelima. `backend/.env` terdeteksi diabaikan dan tidak
+dilacak Git. Proses memuat key aplikasi dan memakai `deepseek-flash` dalam
+mode non-thinking pada endpoint resmi. Nilai key tidak ditampilkan.
+
+| Kasus | Hasil | Latensi browser ke respons |
+|---|---|---:|
+| Penjelasan gen manusia TP53, GeneID `7157` | PASS — HTTP 200, sitasi NCBI Gene | 6.901 ms |
+| Penjelasan protein p53 manusia, UniProtKB `P04637` | PASS — HTTP 200, sitasi UniProtKB | 4.153 ms |
+| Peran p53 dalam respons terhadap kerusakan DNA | FAIL — HTTP 502 `unverified_model_output`; tidak ada jawaban yang ditampilkan | 1.698 ms |
+| Konsentrasi p53 pada sampel tidak teridentifikasi | PASS — HTTP 200 `insufficient_evidence`; tanpa jawaban atau sitasi rekaan | 1.121 ms |
+
+**Ilmiah.** Rekaman live [NCBI Gene 7157](https://www.ncbi.nlm.nih.gov/gene/7157)
+dan [UniProtKB P04637](https://www.uniprot.org/uniprotkb/P04637) sama-sama
+menyatakan *Homo sapiens* (9606). Cross-reference GeneID menghubungkan kedua
+rekaman. Penjelasan memisahkan gen yang mengode dari protein yang menjalankan
+fungsi. Ringkasan NCBI mendukung lokus 17p13.1 dan regulasi gen target saat
+stres seluler. Anotasi UniProt mendukung ikatan DNA, henti siklus sel,
+perbaikan DNA, dan apoptosis yang bergantung pada konteks. Tautan yang tampil
+cocok dengan rekaman. Kedua penjelasan masih padat untuk pemula. Kalimat
+tentang varian perlu membedakan perubahan transkrip dari isoform protein akibat
+perbedaan inisiasi translasi.
+
+**Kegagalan Q&A.** Validator menahan keluaran sebelum tampil. Kode kesalahan
+yang sama mencakup beberapa pemeriksaan, sehingga penyebab spesifik belum
+diketahui. Anotasi UniProt lengkap memuat klausa eksplisit tentang respons
+terhadap kerusakan DNA di luar potongan 1.200 karakter yang dikirim ke model.
+Ini merupakan kesenjangan konteks, bukan diagnosis penyebab penolakan.
+
+**Akses dan biaya.** Akses tanpa kode ditolak oleh proxy dan FastAPI. Kode salah
+ditolak; POST di luar allowlist juga ditolak. Profil tidak memicu panggilan AI.
+Backend memakai satu worker dengan konkurensi `1`, laju `6` per menit, dan
+maksimum `600` token keluaran. Kuota proses adalah `4` pada proses pertama
+dan `1` pada proses kedua, dengan total empat panggilan. Tidak ada kesalahan
+autentikasi, penagihan, atau kuota. Uji kuota habis memakai bukti offline
+sebelumnya. Kuota proses tidak persisten dan akses anonim tetap nonaktif.
+
+Panggilan keempat mencatat 881 token masukan dan 22 keluaran (903 total).
+Perkiraan **US$0,00014535** memakai tarif Flash luar jam sibuk dan menganggap
+semua token masukan tidak kena cache. Statistik tiga panggilan pertama tidak
+terekam karena log penggunaan tidak tertangkap; total biaya tidak diketahui.
+
+**Inspeksi visual.** Tujuh gambar `frontend/screenshots/slice3-live-*.png`
+ditangkap dan diperiksa: penjelasan gen pada desktop, penjelasan p53 dan
+Study Companion pada desktop, tablet, serta mobile. Teks jawaban, tautan,
+dan pesan bukti tidak cukup terbaca. Tombol utama terukur 44 px. Header
+sticky menutup judul dan label atas pada tangkapan kartu penjelasan yang
+lebih tinggi dari viewport; Playwright memverifikasi label AI pada DOM.
+Pertanyaan panjang melampaui dua baris textarea pada tablet dan mobile.
+
+**Gate awal: NO-GO Slice 3.** Hasil setelah perbaikan dicatat di bagian 17.3.
+
+### 17.3 Perbaikan terarah dan verifikasi ulang
+
+**Diagnosis.** Respons mentah yang ditolak pada uji pertama tidak disimpan.
+`unverified_model_output` muncul setelah parsing JSON, pemeriksaan `finish_reason == stop`,
+dan validasi skema berhasil. JSON rusak, field wajib hilang, mismatch skema, atau
+keluaran terpotong akan menghasilkan `invalid_model_output`. Kode lama memakai
+error yang sama untuk ID sumber yang tidak tersedia, penunjuk sumber eksternal,
+atau `key_functions`/`terms` yang terisi pada `/ask`. Pemeriksaan mana yang memicu
+penolakan asli tidak dapat dipastikan. Validator lama juga tidak menilai makna
+klaim. Dua masalah dikonfirmasi secara independen: contoh prompt bersama
+menampilkan array yang terisi, dan batas 1.200 karakter menghilangkan kalimat
+UniProt tentang respons terhadap kerusakan DNA.
+
+**Perbaikan.** `/ask` kini meminta ID kutipan dengan prompt dan skema khusus.
+Backend memilih kandidat kalimat relevan dari rekaman, memvalidasi ID, dan
+merangkai teks serta sitasi dari kutipan tersebut. Model tidak dapat menambahkan
+klaim bebas. UI menandai kutipan sebagai pilihan AI dan menawarkan cara pulih
+jika validasi gagal. Prompt penjelasan membedakan varian transkrip RNA dari
+isoform protein, termasuk isoform akibat titik awal translasi berbeda pada RNA
+yang sama. Log mencatat kategori penolakan, status, dan token tanpa menyimpan
+prompt, keluaran mentah, atau kredensial.
+
+**Offline:** 131/131 backend (26 tes AI), 34/34 Playwright simulasi.
+Regresi mencakup kalimat DNA-damage yang sebelumnya terpotong, pemilihan sumber,
+JSON rusak, field hilang, ID tidak dikenal, keluaran bergaya skema lama, klaim
+kuantitatif yang tidak didukung, dan `insufficient_evidence`. Lint, typecheck,
+build Next.js, dan Semgrep pada lima file aplikasi yang berubah lulus.
+Graphify diperbarui saat finalisasi: 846 node dan 1.836 edge.
+
+**DeepSeek live:** tepat tiga panggilan melalui Chromium, Next.js, dan FastAPI,
+tanpa percobaan ulang. Semua menerima HTTP 200 dan berstatus `generated`.
+POST tanpa kode tetap ditolak (403). Tiga tangkapan layar
+`frontend/screenshots/slice3-recheck-*.png` diambil dan diperiksa.
+
+| Kasus | Latensi | Token input / output | Perkiraan biaya (USD) |
+|---|---:|---:|---:|
+| p53 dan kerusakan DNA | 1.097 ms | 778 / 20 | 0,000128700 |
+| Regulasi pembelahan sel oleh p53 | 982 ms | 768 / 20 | 0,000108384 |
+| Varian transkrip dan isoform TP53 | 5.540 ms | 1.119 / 314 | 0,000356250 |
+| Total | | 2.665 / 354 | 0,000593334 |
+
+Perkiraan memakai tarif Flash luar jam sibuk (128 token input kena cache pada
+panggilan kedua). Kedua jawaban p53 sesuai dengan anotasi [UniProtKB P04637](https://www.uniprot.org/uniprotkb/P04637).
+Jawaban pertama mempertahankan konteks CDK7/CAK dan henti siklus sel serta
+membedakan perbaikan DNA dan apoptosis. Jawaban kedua menyebut regulasi
+ekspresi gen yang diperlukan untuk pembelahan. Penjelasan [NCBI Gene 7157](https://www.ncbi.nlm.nih.gov/gene/7157)
+kini memisahkan varian RNA akibat splicing/promotor alternatif dari bentuk
+protein akibat titik awal translasi. Untuk asosiasi kanker, frasa “loss or
+alteration” perlu dibaca sebagai perubahan patogen; [GeneReviews](https://www.ncbi.nlm.nih.gov/books/NBK1311/)
+mendokumentasikan varian patogen dan delesi terkait Li-Fraumeni.
+
+**Gate akhir: GO untuk Slice 3 dengan akses peninjau.** Kutipan Q&A dapat tetap
+teknis atau kurang lengkap; sitasi penjelasan tidak menjamin setiap parafrasa
+akurat. Kuota proses tidak persisten, sehingga akses anonim berbayar tetap
+nonaktif. Pemilik proyek menyetujui finalisasi melalui PR ke `master` jika
+pemeriksaan wajib lulus. Deployment dan Slice 4 belum diotorisasi.

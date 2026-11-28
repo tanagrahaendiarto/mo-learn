@@ -3,7 +3,7 @@
  *
  * Live section runs against a real stack:
  *   - Next.js frontend on LIVE_BASE_URL (default http://localhost:3000)
- *   - FastAPI backend 0.2.0 behind the Next proxy
+ *   - MoLearn FastAPI backend behind the Next proxy
  *   Checks: unified search filters, exact identifier routing, gene profile,
  *   verified gene↔protein navigation, collection identity, legacy migration.
  *
@@ -59,8 +59,8 @@ async function clearCollection(base) {
 const health = await fetch(`${LIVE}/api/backend/api/v1/health`);
 const healthBody = await health.json();
 check(
-  "backend contract version is 0.2.0",
-  health.ok && healthBody.version === "0.2.0",
+  "backend contract version is 0.3.0",
+  health.ok && healthBody.version === "0.3.0",
   `status ${health.status} version ${healthBody.version}`,
 );
 

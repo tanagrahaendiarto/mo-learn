@@ -191,7 +191,7 @@ function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
       <div className="grid grid-cols-1 gap-lg md:grid-cols-3">
         <div className="flex flex-col gap-lg md:col-span-2">
           {/* 2–3. Validated explanation + key functions, then raw source text */}
-          <ExplanationPanel summary={profile.summary} />
+          <ExplanationPanel key={profile.id} type="protein" entityId={profile.id} summary={profile.summary} />
 
           {profile.functionAnnotations.length > 0 ? (
             <ScientificAnnotation
@@ -229,7 +229,7 @@ function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
           </section>
 
           {/* 9. Study Companion */}
-          <StudyCompanion entityName={profile.name} type="protein" />
+          <StudyCompanion key={profile.id} entityId={profile.id} entityName={profile.name} type="protein" />
         </div>
 
         <div className="flex flex-col gap-lg">

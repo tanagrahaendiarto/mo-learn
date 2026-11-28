@@ -10,12 +10,14 @@ Run explicitly:
 A skip means integration is UNVERIFIED, not broken. Nothing here asserts on
 a mocked response.
 """
+import os
+
 import httpx
 import pytest
 
 pytestmark = pytest.mark.live
 
-LIVE_BASE = "http://127.0.0.1:8000"
+LIVE_BASE = os.getenv("LIVE_BASE_URL", "http://127.0.0.1:8000")
 
 
 @pytest.fixture(scope="module")
