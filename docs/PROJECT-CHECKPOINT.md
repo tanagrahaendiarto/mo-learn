@@ -58,5 +58,12 @@
   `docs/COMPETITION.md`, updated env examples and AI guide.
 - **Hosting:** Vercel Pro + Render 0.5 CPU/512 MB, USD 27/month at base rates.
   Vercel Hobby is non-commercial only.
-- **Gate: GO for commit and a gated deploy after approval.** No public deploy,
-  hosted UAT, or pilot has run yet; the NCBI contact mailbox is still unset.
+- **Gate: GO for production readiness.** Committed as `7fcdcf9` and merged to
+  `master` via PR #7 (`a063634`). Release strategy is local-first: public
+  deployment is postponed, and the Render/Vercel configuration is kept for a
+  later approved release.
+- **Local release run:** production-built frontend at `http://127.0.0.1:3000`
+  and backend at `http://127.0.0.1:8000` use live providers with demo mode off.
+  AI is reviewer-only. Manual UAT checklist: `docs/LOCAL-UAT.md`.
+- **Open configuration:** `MOLEARN_NCBI_CONTACT_EMAIL` is still unset. No public
+  deploy, paid hosting, or paid AI call has occurred.

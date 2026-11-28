@@ -1298,9 +1298,14 @@ setelah deploy.
 
 ### 19.8 Gate
 
-**GO untuk commit dan deploy terbatas setelah persetujuan**, dengan syarat:
-email kontak NCBI diisi, AI tetap nonaktif saat rilis, dan UAT produksi
-(`docs/COMPETITION.md`) dijalankan pada URL hosting sebelum peserta diundang.
-**NO-GO untuk klaim "siap produksi penuh"**: belum ada deploy publik, UAT
-hosting, atau data pilot. Semua perubahan masih belum di-commit pada branch
-`feat/production-readiness`.
+**GO untuk kesiapan produksi.** Perubahan di-commit sebagai `7fcdcf9` dan
+di-merge ke `master` melalui PR #7 (`a063634`). Strategi rilis diubah menjadi
+**local-first**: deploy publik ditunda, bukan dibatalkan. Konfigurasi Render dan
+Vercel tetap disimpan untuk rilis mendatang.
+
+Syarat sebelum deploy publik tetap berlaku: isi email kontak NCBI, jalankan UAT
+hosting, dan aktifkan AI hanya untuk jendela reviewer. Aplikasi lokal berjalan
+di `http://127.0.0.1:3000` (frontend) dan `http://127.0.0.1:8000` (backend)
+dengan provider asli, demo nonaktif, dan AI hanya untuk reviewer. Checklist UAT
+manual ada di `docs/LOCAL-UAT.md`. Tidak ada deploy publik, hosting berbayar,
+atau panggilan AI berbayar saat finalisasi ini.
