@@ -328,6 +328,24 @@ if (SIM) {
     !downText.includes("Guardian of the genome"),
   );
 
+  await setStubMode("non-json");
+  const proxy = `${SIM}/api/backend/api/v1/search?q=TP53`;
+  const unavailable = await fetch(proxy);
+  check(
+    "SIMULATED proxy returns safe JSON for a platform HTML error",
+    unavailable.status === 503 && (await unavailable.json()).detail === "upstream_unavailable",
+  );
+  check(
+    "SIMULATED proxy response is protected from MIME sniffing and caching",
+    unavailable.headers.get("x-content-type-options") === "nosniff" &&
+      unavailable.headers.get("cache-control") === "no-store",
+  );
+  await setStubMode("redirect");
+  const redirected = await fetch(proxy);
+  check(
+    "SIMULATED proxy rejects upstream redirects",
+    redirected.status === 502 && (await redirected.json()).detail === "connection_error",
+  );
   await setStubMode("ok");
 } else {
   console.log("\nSKIP  SIMULATED provider scenarios — set SIM_BASE_URL to run them");

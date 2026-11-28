@@ -368,7 +368,7 @@ export default async function EntityProfilePage(props: {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-md py-xl md:px-xl">
+    <div className="mx-auto w-full max-w-5xl px-md py-xl md:px-xl">
       <Link
         href="/search"
         className="inline-flex items-center gap-xs font-label text-label-md text-on-surface-variant hover:text-primary"
@@ -389,6 +389,6 @@ export default async function EntityProfilePage(props: {
           ← Search Other Entities
         </PixelButtonLink>
       </div>
-    </main>
+    </div>
   );
 }

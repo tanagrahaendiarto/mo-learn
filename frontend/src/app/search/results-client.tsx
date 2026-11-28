@@ -223,7 +223,7 @@ export function SearchResultsClient({
   })();
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
+    <div className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
       {/* Persistent search bar */}
       <section className="mb-xl">
         <SearchInput
@@ -403,6 +403,6 @@ export function SearchResultsClient({
           )}
         </div>
       )}
-    </main>
+    </div>
   );
 }

@@ -51,7 +51,7 @@ export default function CollectionPage() {
   }, [items, category, query]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
+    <div className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
       {/* Header */}
       <section className="mb-xl">
         <div className="flex flex-col justify-between gap-md md:flex-row md:items-end">
@@ -230,6 +230,6 @@ export default function CollectionPage() {
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }

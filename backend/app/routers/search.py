@@ -25,6 +25,7 @@ per-request phase timeouts, not hard in-flight cancellation.
 import base64
 import json
 import re
+import time
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -115,7 +116,7 @@ def decode_cursor(cursor: str | None) -> tuple[str | None, int, bool]:
         raise ValueError("cursor_invalid")
     if u is not None and not isinstance(u, str):
         raise ValueError("cursor_invalid")
-    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+    if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= 2_147_483_647:
         raise ValueError("cursor_invalid")
     if not isinstance(g, bool):
         raise ValueError("cursor_invalid")
@@ -288,12 +289,13 @@ def search_proteins(
     statuses: list[ProviderStatus] = []
     errors: list[ProviderStatus] = []
     up_next: str | None = None
-    gene_more = False
+    deadline = time.monotonic() + 35
 
     if want_protein:
         try:
             raw, up_next = uniprot.search(
-                uniprot.get_client(), uniprot.build_name_query(q), page_size, up_cursor
+                uniprot.get_client(), uniprot.build_name_query(q), page_size, up_cursor,
+                deadline=min(deadline, time.monotonic() + 15) if want_gene and not gene_done else deadline,
             )
             mapped = [uniprot.map_summary(r, ts) for r in raw]
             results.extend(mapped)
@@ -308,9 +310,11 @@ def search_proteins(
     if want_gene and not gene_done:
         try:
             term = build_gene_term(q)
-            ids = ncbi.esearch(ncbi.get_client(), term, retmax=page_size + ncbi_offset + 1)
-            page_ids = ids[ncbi_offset:][:page_size]
-            recs = ncbi.efetch_batch(ncbi.get_client(), page_ids) if page_ids else {}
+            ids = ncbi.esearch(
+                ncbi.get_client(), term, retmax=page_size + 1, offset=ncbi_offset, deadline=deadline,
+            )
+            page_ids = ids[:page_size]
+            recs = ncbi.efetch_batch(ncbi.get_client(), page_ids, deadline=deadline)
             gres = [_map_gene(recs[gid], ts) for gid in page_ids if gid in recs]
             results.extend(gres)
             statuses.append(ProviderStatus(
@@ -319,7 +323,9 @@ def search_proteins(
                 count=len(gres),
             ))
             # Exhausted when the page came back short: no further gene pages.
-            gene_done = len(page_ids) < page_size
+            gene_done = len(ids) <= page_size
+            if not gene_done:
+                ncbi_offset += page_size
         except NcbiError as e:
             errors.append(ProviderStatus(name="ncbi_gene", status="error", detail=e.code))
     elif want_gene:
@@ -355,7 +361,7 @@ def search_proteins(
 
     next_cursor = encode_cursor(
         up_next,
-        ncbi_offset + page_size if (want_gene and not gene_done) else 0,
+        ncbi_offset if want_gene and not gene_done else 0,
         gene_done,
     )
     provider_status = "partial" if errors else ("available" if ordered else "not_found")

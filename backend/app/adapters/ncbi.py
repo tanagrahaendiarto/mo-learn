@@ -13,6 +13,7 @@ Documented policy:
 """
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -28,8 +29,18 @@ EFETCH_PATH = "/entrez/eutils/efetch.fcgi"
 TIMEOUT_S = 20.0
 MAX_RETRY_AFTER_S = 3.0
 TOTAL_DEADLINE_S = 35.0
+
+
+def _contact_params() -> dict[str, str]:
+    params = {"tool": "MoLearn"}
+    contact = os.getenv("MOLEARN_NCBI_CONTACT_EMAIL", "").strip()
+    if contact:
+        params["email"] = contact
+    return params
+
+
 # Share the unauthenticated E-utilities pace with RefSeq and PubMed.
-EUTILS = ScientificSource("https://eutils.ncbi.nlm.nih.gov", spacing=0.35)
+EUTILS = ScientificSource("https://eutils.ncbi.nlm.nih.gov", spacing=0.35, params=_contact_params())
 
 _client: httpx.Client | None = None
 
@@ -63,7 +74,7 @@ class UnknownUpstream(ProviderError):
 def get_client() -> httpx.Client:
     global _client
     if _client is None:
-        _client = httpx.Client(base_url=BASE, timeout=TIMEOUT_S)
+        _client = httpx.Client(base_url=BASE, timeout=TIMEOUT_S, params=_contact_params())
     return _client
 
 
@@ -83,9 +94,8 @@ def _wait_rate_limit(deadline: float) -> float:
     return remaining
 
 
-def _efetch_gene_xml(client: httpx.Client, gene_id: str) -> ET.Element:
+def _efetch_gene_xml(client: httpx.Client, gene_id: str, deadline: float) -> ET.Element | None:
     """Fetch one gene record, return the Entrezgene element."""
-    deadline = time.monotonic() + TOTAL_DEADLINE_S
     for attempt in range(2):
         remaining = _wait_rate_limit(deadline)
         try:
@@ -118,6 +128,10 @@ def _efetch_gene_xml(client: httpx.Client, gene_id: str) -> ET.Element:
                 time.sleep(1)
                 continue
             raise ProviderError("upstream_ncbi_error")
+        if resp.status_code == 404:
+            return None
+        if not resp.is_success:
+            raise UnknownUpstream()
         try:
             root = ET.fromstring(resp.text)
         except ET.ParseError as e:
@@ -222,19 +236,29 @@ def _gene_from_xml(eg: ET.Element, gene_id: str) -> dict:
     }
 
 
-def retrieve(client: httpx.Client, gene_id: str) -> dict | None:
+def retrieve(client: httpx.Client, gene_id: str, *, deadline: float | None = None) -> dict | None:
     """Return gene record dict, or None when NCBI answers 404."""
     if not gene_id.isdigit() or int(gene_id) <= 0:
         raise ValueError("invalid_gene_id")
-    root = _efetch_gene_xml(client, gene_id)
+    gene_id = str(int(gene_id))
+    deadline = deadline if deadline is not None else time.monotonic() + TOTAL_DEADLINE_S
+    root = _efetch_gene_xml(client, gene_id, deadline)
+    if root is None:
+        return None
     # Check if gene was found
     egs = root.find("Entrezgene-Set")
-    if egs is not None:
+    if root.tag == "Entrezgene":
+        eg = root
+    elif egs is not None:
         eg = egs.find("Entrezgene")
     else:
         eg = root.find("Entrezgene")
     if eg is None:
+        if root.tag != "Entrezgene-Set" and egs is None:
+            raise UpstreamMalformed()
         return None
+    if _first_text(eg, ".//Gene-track_geneid") != gene_id:
+        raise UpstreamMalformed()
     track = eg.find("Entrezgene_track-info")
     if track is not None:
         status_el = track.find("Gene-track_status")
@@ -243,15 +267,18 @@ def retrieve(client: httpx.Client, gene_id: str) -> dict | None:
     return _gene_from_xml(eg, gene_id)
 
 
-def esearch(client: httpx.Client, term: str, retmax: int = 10) -> list[str]:
+def esearch(
+    client: httpx.Client, term: str, retmax: int = 10, *,
+    offset: int = 0, deadline: float | None = None,
+) -> list[str]:
     """Search NCBI Gene, return list of GeneIDs."""
-    deadline = time.monotonic() + TOTAL_DEADLINE_S
+    deadline = deadline if deadline is not None else time.monotonic() + TOTAL_DEADLINE_S
     for attempt in range(2):
         remaining = _wait_rate_limit(deadline)
         try:
             resp = client.get(
                 ESEARCH_PATH,
-                params={"db": "gene", "term": term, "retmode": "json", "retmax": str(retmax)},
+                params={"db": "gene", "term": term, "retmode": "json", "retmax": retmax, "retstart": offset},
                 timeout=min(TIMEOUT_S, remaining),
             )
         except httpx.TimeoutException:
@@ -278,16 +305,26 @@ def esearch(client: httpx.Client, term: str, retmax: int = 10) -> list[str]:
                 time.sleep(1)
                 continue
             raise ProviderError("upstream_ncbi_error")
-        data = resp.json()
-        return data.get("esearchresult", {}).get("idlist", [])
+        if not resp.is_success:
+            raise UnknownUpstream()
+        try:
+            ids = resp.json()["esearchresult"]["idlist"]
+        except (ValueError, KeyError, TypeError, RecursionError):
+            raise UpstreamMalformed() from None
+        if not isinstance(ids, list) or len(ids) > retmax or any(
+            not isinstance(gid, str) or not gid.isascii() or not gid.isdecimal()
+            or len(gid) > 12 or gid.startswith("0") for gid in ids
+        ):
+            raise UpstreamMalformed()
+        return ids
     raise ProviderError("upstream_ncbi_error")
 
 
-def efetch_batch(client: httpx.Client, gene_ids: list[str]) -> dict[str, dict]:
+def efetch_batch(client: httpx.Client, gene_ids: list[str], *, deadline: float | None = None) -> dict[str, dict]:
     """Fetch multiple genes, return dict gene_id -> record dict."""
     if not gene_ids:
         return {}
-    deadline = time.monotonic() + TOTAL_DEADLINE_S
+    deadline = deadline if deadline is not None else time.monotonic() + TOTAL_DEADLINE_S
     for attempt in range(2):
         remaining = _wait_rate_limit(deadline)
         try:
@@ -320,6 +357,8 @@ def efetch_batch(client: httpx.Client, gene_ids: list[str]) -> dict[str, dict]:
                 time.sleep(1)
                 continue
             raise ProviderError("upstream_ncbi_error")
+        if not resp.is_success:
+            raise UnknownUpstream()
         try:
             root = ET.fromstring(resp.text)
         except ET.ParseError as e:

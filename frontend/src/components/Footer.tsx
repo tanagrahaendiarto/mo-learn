@@ -28,6 +28,9 @@ export function Footer() {
           <Link href="/glosarium" className="hover:text-primary">
             Glossary
           </Link>
+          <a href="https://www.ncbi.nlm.nih.gov/home/about/policies/" className="hover:text-primary">
+            NCBI disclaimer and copyright
+          </a>
         </div>
       </div>
     </footer>

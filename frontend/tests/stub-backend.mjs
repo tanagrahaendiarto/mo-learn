@@ -11,7 +11,7 @@
  *   STUB_PORT=8099 node tests/stub-backend.mjs
  *
  * Mode control (test-only):
- *   GET /__mode/ok | partial | partial-empty | down
+ *   GET /__mode/ok | partial | partial-empty | down | non-json | redirect
  */
 
 import { createServer } from "node:http";
@@ -116,6 +116,14 @@ const server = createServer((req, res) => {
     // Simulate an unreachable backend: drop the connection.
     req.socket.destroy();
     return;
+  }
+  if (mode === "non-json") {
+    res.writeHead(503, { "content-type": "text/html" });
+    return res.end("<html>Platform is warming up</html>");
+  }
+  if (mode === "redirect" && url.pathname === "/api/v1/search") {
+    res.writeHead(302, { location: "/api/v1/health" });
+    return res.end();
   }
 
   if (url.pathname === "/api/v1/health") {

@@ -1,4 +1,5 @@
 """Restricted on-demand learning endpoints."""
+import asyncio
 import hmac
 
 from fastapi import APIRouter, Request
@@ -39,6 +40,11 @@ class RestrictedRoute(APIRoute):
                 return failure(LearningFailure(413, "bad_request", "body_too_large"))
             request.state.ai_config = config
             try:
+                async with asyncio.timeout(5):
+                    await request.body()
+            except TimeoutError:
+                return failure(LearningFailure(408, "timeout", "request_body_timeout"))
+            try:
                 response = await handler(request)
             except LearningFailure as error:
                 return failure(error)
@@ -51,7 +57,7 @@ class RestrictedRoute(APIRoute):
 
 
 router = APIRouter(prefix="/api/v1/ai", tags=["AI learning"], route_class=RestrictedRoute)
-ERRORS = {code: {"model": LearningError} for code in (403, 404, 411, 413, 415, 422, 429, 502, 503, 504)}
+ERRORS = {code: {"model": LearningError} for code in (403, 404, 408, 411, 413, 415, 422, 429, 502, 503, 504)}
 
 
 @router.post("/explain", response_model=LearningResult, responses=ERRORS)

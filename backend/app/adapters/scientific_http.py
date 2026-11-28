@@ -20,9 +20,10 @@ def retrieved_now() -> str:
 
 
 class ScientificSource:
-    def __init__(self, base_url: str, *, spacing: float = 0.25):
+    def __init__(self, base_url: str, *, spacing: float = 0.25, params: dict[str, str] | None = None):
         self.client = httpx.Client(
             base_url=base_url,
+            params=params,
             headers={
                 "User-Agent": "MoLearn/0.4 (educational scientific browser)",
                 "Accept-Encoding": "identity",

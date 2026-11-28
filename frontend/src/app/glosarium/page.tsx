@@ -47,7 +47,7 @@ export default function GlossaryPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
+    <div className="mx-auto w-full max-w-7xl px-md py-xl md:px-xl">
       {/* Header */}
       <section className="mb-xl">
         <h1 className="font-headline text-headline-lg-mobile text-on-surface md:text-headline-lg">
@@ -135,7 +135,7 @@ export default function GlossaryPage() {
           </p>
         </section>
       )}
-    </main>
+    </div>
   );
 }
 
