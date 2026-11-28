@@ -65,7 +65,11 @@ const EXPORT_COLUMNS: CsvColumn[] = [
   { key: "symbol", label: "Symbol" },
   { key: "name", label: "Name" },
   { key: "organism", label: "Organism" },
+  { key: "taxonomy_id", label: "Taxonomy ID" },
   { key: "source", label: "Source" },
+  { key: "source_id", label: "Source ID" },
+  { key: "source_url", label: "Source URL" },
+  { key: "retrieved_at", label: "Retrieved at" },
 ];
 
 /** Modul eksplorasi dinamis per entitas — hanya yang didukung data sumber. */
@@ -73,7 +77,7 @@ function modulesForProfile(
   profile: EntityProfile,
 ): ExplorationModuleData[] {
   return EXPLORATION_MODULES.map((m) => {
-    if (m.module === "sequence") {
+    if (m.module === "sequence" && IS_DEMO_MODE) {
       if (profile.type === "protein" && profile.length != null) {
         return {
           ...m,
@@ -110,7 +114,11 @@ function exportConfigFor(profile: EntityProfile) {
         symbol: profile.symbol,
         name: profile.name,
         organism: profile.organism,
+        taxonomy_id: profile.taxonomyId,
         source: profile.source,
+        source_id: IS_DEMO_MODE ? undefined : profile.id,
+        source_url: profile.sourceUrl,
+        retrieved_at: profile.retrievedAt,
       },
     ],
     columns: EXPORT_COLUMNS,
@@ -191,7 +199,7 @@ function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
       <div className="grid grid-cols-1 gap-lg md:grid-cols-3">
         <div className="flex flex-col gap-lg md:col-span-2">
           {/* 2–3. Validated explanation + key functions, then raw source text */}
-          <ExplanationPanel key={profile.id} type="protein" entityId={profile.id} summary={profile.summary} />
+          <ExplanationPanel key={`explanation:${profile.id}`} type="protein" entityId={profile.id} summary={profile.summary} />
 
           {profile.functionAnnotations.length > 0 ? (
             <ScientificAnnotation
@@ -225,11 +233,12 @@ function ProteinProfileView({ profile }: { profile: ProteinEntityProfile }) {
             <ExplorationModules
               modules={modules}
               exportConfig={exportConfigFor(profile)}
+              entity={IS_DEMO_MODE ? undefined : { type: "protein", id: profile.id }}
             />
           </section>
 
           {/* 9. Study Companion */}
-          <StudyCompanion key={profile.id} entityId={profile.id} entityName={profile.name} type="protein" />
+          <StudyCompanion key={`companion:${profile.id}`} entityId={profile.id} entityName={profile.name} type="protein" />
         </div>
 
         <div className="flex flex-col gap-lg">

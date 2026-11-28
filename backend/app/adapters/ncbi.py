@@ -2,7 +2,7 @@
 
 Documented policy:
 - Base URL: https://eutils.ncbi.nlm.nih.gov/entrez/eutils
-- Rate limit: 3 req/s without API key (token bucket, 330 ms spacing).
+- Rate limit: 3 req/s without API key, paced at 350 ms per process.
 - Per-request timeout 20 s; TOTAL_DEADLINE_S bounds the whole call.
 - 1 retry on 5xx/timeout; 429 retried only when Retry-After <= 3 s.
 - Responses are XML; missing fields become None, never fabricated.
@@ -20,17 +20,18 @@ from urllib.parse import urlencode
 import httpx
 import xml.etree.ElementTree as ET
 
+from .scientific_http import ScientificSource, SourceError
+
 BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 ESEARCH_PATH = "/entrez/eutils/esearch.fcgi"
 EFETCH_PATH = "/entrez/eutils/efetch.fcgi"
 TIMEOUT_S = 20.0
 MAX_RETRY_AFTER_S = 3.0
 TOTAL_DEADLINE_S = 35.0
-# Rate-limit spacing: 3 req/s => 330 ms between requests
-_RATE_SPACING_S = 0.34
+# Share the unauthenticated E-utilities pace with RefSeq and PubMed.
+EUTILS = ScientificSource("https://eutils.ncbi.nlm.nih.gov", spacing=0.35)
 
 _client: httpx.Client | None = None
-_last_request_ts: float = 0.0
 
 
 class ProviderError(Exception):
@@ -71,23 +72,22 @@ def set_client(c: httpx.Client | None) -> None:
     _client = c
 
 
-def _wait_rate_limit() -> None:
-    global _last_request_ts
-    now = time.monotonic()
-    wait = _last_request_ts + _RATE_SPACING_S - now
-    if wait > 0:
-        time.sleep(wait)
-    _last_request_ts = time.monotonic()
+def _wait_rate_limit(deadline: float) -> float:
+    try:
+        EUTILS.pace(deadline)
+    except SourceError as exc:
+        raise ProviderTimeout() from exc
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ProviderTimeout()
+    return remaining
 
 
 def _efetch_gene_xml(client: httpx.Client, gene_id: str) -> ET.Element:
     """Fetch one gene record, return the Entrezgene element."""
     deadline = time.monotonic() + TOTAL_DEADLINE_S
     for attempt in range(2):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise ProviderTimeout()
-        _wait_rate_limit()
+        remaining = _wait_rate_limit(deadline)
         try:
             resp = client.get(
                 EFETCH_PATH,
@@ -247,10 +247,7 @@ def esearch(client: httpx.Client, term: str, retmax: int = 10) -> list[str]:
     """Search NCBI Gene, return list of GeneIDs."""
     deadline = time.monotonic() + TOTAL_DEADLINE_S
     for attempt in range(2):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise ProviderTimeout()
-        _wait_rate_limit()
+        remaining = _wait_rate_limit(deadline)
         try:
             resp = client.get(
                 ESEARCH_PATH,
@@ -292,10 +289,7 @@ def efetch_batch(client: httpx.Client, gene_ids: list[str]) -> dict[str, dict]:
         return {}
     deadline = time.monotonic() + TOTAL_DEADLINE_S
     for attempt in range(2):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise ProviderTimeout()
-        _wait_rate_limit()
+        remaining = _wait_rate_limit(deadline)
         try:
             resp = client.get(
                 EFETCH_PATH,

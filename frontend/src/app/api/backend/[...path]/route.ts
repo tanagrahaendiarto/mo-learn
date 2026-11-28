@@ -21,12 +21,13 @@ function decodeSegment(value: string): string | null {
   }
 }
 
-function isAllowed(pathname: string): boolean {
+function isAllowed(pathname: string, search: string): boolean {
   if (pathname === "/api/v1/health") return true;
   if (pathname === "/api/v1/search") return true;
 
-  const match = /^\/api\/v1\/entities\/(protein|gene)\/([^/]+)$/.exec(pathname);
+  const match = /^\/api\/v1\/entities\/(protein|gene)\/([^/]+)(?:\/(sequence|literature|structure|ligand|interaction))?$/.exec(pathname);
   if (!match) return false;
+  if (match[3] && search) return false;
 
   const id = decodeSegment(match[2]);
   if (!id) return false;
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const backendPath = url.pathname.replace(/^\/api\/backend/, "") || "/";
 
-  if (!isAllowed(backendPath)) {
+  if (!isAllowed(backendPath, url.search)) {
     return NextResponse.json(
       { status: "not_found", detail: "Endpoint tidak diizinkan" },
       { status: 404 },

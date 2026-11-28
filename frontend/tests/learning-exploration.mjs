@@ -218,7 +218,9 @@ check("accessible list heading present", bodyText.includes("Relationships"));
    F. Exploration modules — honest states
    ============================================================ */
 
-check("module unavailable state shown", bodyText.includes("Unavailable"));
+check("scientific module has the correct initial state", DEMO
+  ? bodyText.includes("Unavailable")
+  : await page.getByRole("button", { name: "Load sequence" }).count() === 1);
 check("module export available", bodyText.includes("Download CSV"));
 
 /* ============================================================

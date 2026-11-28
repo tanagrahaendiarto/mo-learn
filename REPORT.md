@@ -1022,3 +1022,166 @@ teknis atau kurang lengkap; sitasi penjelasan tidak menjamin setiap parafrasa
 akurat. Kuota proses tidak persisten, sehingga akses anonim berbayar tetap
 nonaktif. Pemilik proyek menyetujui finalisasi melalui PR ke `master` jika
 pemeriksaan wajib lulus. Deployment dan Slice 4 belum diotorisasi.
+
+## 18. Slice 4 — Scientific Exploration
+
+### 18.1 Sequence
+
+- On-demand `GET /api/v1/entities/{gene|protein}/{id}/sequence` returns typed
+  records, versioned reference identifiers, coordinates when applicable, and
+  per-source notices. No fixture fallback in live mode.
+- UniProtKB supplies the amino-acid sequence and canonical protein identity.
+  NCBI Datasets supplies RefSeqGene or assembly-annotated locus coordinates and
+  RefSeq transcript/CDS mappings. EFetch supplies accession-checked FASTA.
+  Transcript selection prefers MANE Select, then RefSeq Select; otherwise the
+  UI labels the chosen record as an example. Regions above 100,000 bases, complex
+  CDSs, and records without supported mappings may be omitted.
+- [UniProtKB REST API](https://rest.uniprot.org/uniprotkb/api/docs),
+  [UniProt license](https://www.uniprot.org/help/license) (CC BY 4.0),
+  [NCBI Datasets REST API](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/api/rest-api/),
+  [gene product schema](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/gene-product/),
+  [NCBI Datasets rate limits](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/api/api-keys/),
+  [E-utilities documentation](https://www.ncbi.nlm.nih.gov/books/NBK25499/), and
+  [NCBI data policies](https://www.ncbi.nlm.nih.gov/home/about/policies/).
+  Module transport paces Datasets at one start per 210 ms and EFetch at one per
+  350 ms per process. UniProt uses the existing bounded adapter.
+- Live route checks: P04637 (393 aa), P00918 (260 aa), TP53/7157 (RefSeqGene
+  NG_017013.2, MANE NM_000546.6, 1,182-base CDS), and mouse Trp53/22059
+  (RefSeq Select NM_011640.4 and an annotated genomic locus).
+- Verification: 139 offline backend tests; 15 live and one mocked browser
+  check; frontend lint and typecheck. Three sequence screenshots inspected.
+
+### 18.2 Scientific Literature
+
+- PubMed EFetch supplies article metadata. Direct references come from NCBI
+  Gene `gene_pubmed` or UniProtKB PubMed cross-references. Separately labeled
+  ESearch results match entity and organism terms. Each group is capped at eight
+  records; duplicate PMIDs keep their direct relationship.
+- [E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25499/),
+  [PubMed search reference](https://pubmed.ncbi.nlm.nih.gov/help/), and
+  [NCBI policies](https://www.ncbi.nlm.nih.gov/home/about/policies/).
+  PubMed shares the paced EFetch transport with Sequence. Abstracts are displayed
+  only when their copyright notice explicitly links CC BY 4.0 or CC0 1.0.
+  Other available abstracts link to PubMed. Europe PMC returned 403 or timed out
+  in this environment; the implementation uses PubMed.
+- Live checks: P04637, GeneID 7157, P00918, and mouse GeneID 22059 returned both
+  groups. Six live browser literature checks passed across three viewports.
+  Three screenshots inspected. Offline tests cover discovery provenance,
+  unrequested article rejection, abstract rights, and partial search failure.
+
+### 18.3 Molecular Structure
+
+- [RCSB Data API](https://data.rcsb.org/) verifies UniProt protein identifiers
+  and author chains in up to six candidate PDB entries. UniProt supplies
+  mapped residue ranges; RCSB supplies experimental methods, resolution,
+  assembly thumbnails, and [mmCIF downloads](https://www.rcsb.org/docs/programmatic-access/file-download-services).
+  Mapped spans can include unresolved residues. RCSB data is
+  [CC0](https://www.rcsb.org/pages/policies); usage is paced and handles 429.
+- [AlphaFold DB API](https://alphafold.ebi.ac.uk/api-docs) verifies accession,
+  taxonomy, and sequence when present. It supplies mean pLDDT, PAE previews
+  and model links. Full interactive 3D opens at the provider. See
+  [AlphaFold DB FAQ and data terms](https://alphafold.ebi.ac.uk/faq) (CC BY 4.0).
+  The fixed-host adapter paces requests and backs off on 429.
+- Four live entity routes returned experimental and predicted models, including
+  P04637 with mean pLDDT 75.06. Six live browser checks verified provider
+  previews and metadata on three viewports. Offline tests verified mapping,
+  safe downloads, and preservation of RCSB records when AlphaFold fails identity checks.
+
+### 18.4 Chemical Components
+
+- The RCSB Chemical Component Dictionary identifies non-polymer components
+  in experimentally verified PDB entries. Results distinguish ions and report
+  other non-polymer components without assigning a biological binding role.
+  Cofactor annotations require a matching UniProtKB annotation by ChEBI ID
+  or an exact monatomic element and formal-charge match.
+- [RCSB Data API](https://data.rcsb.org/) supplies CCD IDs, names, formulas,
+  and deposited entry associations. Entries link to their original RCSB page.
+  The module makes no binding-affinity or efficacy claims.
+- Four live entity routes and three browser viewport checks passed. p53 showed
+  ZN in `6XRE`, `8R1F`, and `8R1G`. Carbonic anhydrase II showed ions and other
+  non-polymer components. The offline check rejects components from an entry
+  whose UniProt mapping cannot be verified.
+
+### 18.5 Protein Interaction
+
+- [STRING v12 API](https://string-db.org/help/api/) resolves the UniProtKB
+  accession and taxon and must agree with the explicit UniProtKB STRING
+  cross-reference. The functional network shows up to ten same-organism
+  associations scoring at least 0.70, with channel scores when present.
+- The network reuses the relationship map and accessible list. The seed opens
+  its verified MoLearn protein profile. Partners link to STRING. A functional
+  association, including experiments-channel evidence, is not confirmation
+  of direct physical binding.
+- [Data license and downloads](https://string-db.org/cgi/download) (CC BY 4.0
+  for published network data). The adapter identifies MoLearn and spaces
+  calls by at least one second per process. The provider's web viewer
+  sometimes blocked automated clients; the source JSON endpoint was live.
+- Four live entity checks and six live browser checks passed. Offline tests
+  reject ambiguous mappings and cross-species partner records.
+
+### 18.6 Data Export
+
+- Entity, literature, structure, and STRING CSVs preserve source identifiers,
+  retrieval time, taxonomy and source URLs. Module CSVs include result status
+  and provider notices, so a partial export remains identifiable. The sequence
+  viewer exports the selected record with a provenance-bearing FASTA header.
+- CSV serialization doubles embedded quotes, quotes cells containing delimiters
+  or newlines, and prefixes spreadsheet formula-like text with an apostrophe.
+  Abstract text is excluded from the metadata export.
+- The entity CSV stays in Data Export. The relevant module offers each data
+  CSV or FASTA after it has loaded verified records; exports reuse those results.
+- Production browser checks covered all four CSVs, FASTA and clipboard parity,
+  partial-result provenance, and formula neutralization with a mocked unsafe title.
+
+### 18.7 API Contract and Verification
+
+Each exploration request uses `GET /api/v1/entities/{gene|protein}/{id}/{module}`.
+The supported suffixes are `sequence`, `literature`, `structure`, `ligand`, and
+`interaction`. The browser uses the same paths prefixed with `/api/backend`.
+The proxy accepts the five exact suffixes without query strings. The response
+contains canonical `identity`, typed `records`, and structured source `notices`.
+Valid requests return `200` with `available`, `empty`, `unavailable`, `partial`,
+or `provider_error`. An unknown entity returns `404`; invalid identifiers return
+`422` from FastAPI. FastAPI publishes the fields in its `/docs` and `/openapi.json`.
+The existing AI POST allowlist and reviewer-only flow remain in place.
+
+Transport uses fixed HTTPS providers, bounded response sizes for the new
+adapters, timeouts and a single bounded retry for transient failures. NCBI Gene,
+RefSeq and PubMed share E-utilities pacing in each backend process. Provider
+failure never activates demo data.
+
+To reproduce, start FastAPI and production Next.js on loopback with
+`BACKEND_API_URL` set, `NEXT_PUBLIC_DEMO_MODE=false`, and reviewer AI disabled
+for scientific testing. Use `LIVE_BASE_URL` for the Python backend URL and
+`EXPLORATION_BROWSER_URL` for the frontend URL.
+
+```sh
+# backend/
+uv run --locked --offline pytest -q -m "not live"
+uv run --locked --offline pytest -q -m live tests/test_api_live.py tests/test_exploration_live.py
+
+# frontend/ (Node 24 for the browser test's TypeScript helper import)
+npm run lint
+npm run typecheck
+npm run build
+npm run test:slice4
+```
+
+**Verified on the local production build:** 146 offline backend tests and 22
+paced live provider cases. The live suite covered TP53/7157, P04637, human
+carbonic anhydrase II/P00918, and mouse Trp53/22059 across all five live modules.
+The Slice 4 browser script passed 49 checks: 41 live, three mocked, four proxy
+security checks, and one offline CSV check. Earlier browser suites passed:
+75 route/layout checks, 97 learning checks, 40 Slice 2 integration checks
+(33 live, seven simulated), and 34 mocked Slice 3 AI checks. Frontend lint,
+typecheck and build, the uv lock check, and Semgrep (`p/default`, 74 source
+targets, zero findings) passed.
+
+Desktop (1440×900), tablet (768×1024), and mobile (390×844) screenshots are
+under `frontend/screenshots/slice4-*.png` and were visually inspected. Narrow
+375 px reduced-motion checks and a landscape Sequence check also passed.
+The sample RCSB mmCIF and AlphaFold mmCIF/PDB download URLs returned HTTP 200
+to provider HEAD requests. No paid AI calls were made.
+
+**Milestone gate: GO for local Slice 4 verification.** Commit, push, and
+deployment remain separate actions.

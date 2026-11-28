@@ -13,4 +13,4 @@ dependencies = [
 dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
-markers = ["live: hit real UniProt through the local app (run explicitly)"]
+markers = ["live: hit real scientific providers through the local app (run explicitly)"]
