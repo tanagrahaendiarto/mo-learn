@@ -94,7 +94,7 @@ export function GeneProfile({
       <div className="grid grid-cols-1 gap-lg md:grid-cols-3">
         <div className="flex flex-col gap-lg md:col-span-2">
           {/* 2–3. No validated beginner summary; raw NCBI text below. */}
-          <ExplanationPanel key={gene.id} type="gene" entityId={gene.id} summary={gene.summary} />
+          <ExplanationPanel key={`explanation:${gene.id}`} type="gene" entityId={gene.id} summary={gene.summary} />
 
           {gene.description ? (
             <ScientificAnnotation
@@ -125,11 +125,11 @@ export function GeneProfile({
             <h2 className="mb-sm font-label text-label-sm text-on-surface-variant">
               Exploration modules
             </h2>
-            <ExplorationModules modules={modules} exportConfig={exportConfig} />
+            <ExplorationModules modules={modules} exportConfig={exportConfig} entity={isDemo ? undefined : { type: "gene", id: gene.id }} />
           </section>
 
           {/* 9. Study Companion */}
-          <StudyCompanion key={gene.id} entityId={gene.id} entityName={gene.name} type="gene" />
+          <StudyCompanion key={`companion:${gene.id}`} entityId={gene.id} entityName={gene.name} type="gene" />
         </div>
 
         <div className="flex flex-col gap-lg">

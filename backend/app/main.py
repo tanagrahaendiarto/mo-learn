@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .routers import ai, entities, genes, health, search
+from .routers import ai, entities, exploration, genes, health, search
 
 app = FastAPI(
     title="MoLearn API",
@@ -14,4 +14,5 @@ app.include_router(health.router)
 app.include_router(search.router)
 app.include_router(entities.router)
 app.include_router(genes.router)
+app.include_router(exploration.router)
 app.include_router(ai.router)

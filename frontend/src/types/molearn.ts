@@ -34,6 +34,7 @@ export type EntitySource =
   | "UniProt"
   | "NCBI Gene"
   | "PDB"
+  | "AlphaFold DB"
   | "STRING"
   | "Local (demo)"
   | "Unknown";
@@ -186,6 +187,7 @@ export type ExplorationModule =
 
 /** Status konten modul eksplorasi (honest, tanpa fabrikasi). */
 export type ExplorationModuleState =
+  | "partial"
   | "available"
   | "loading"
   | "empty"
@@ -287,6 +289,8 @@ export interface RelationshipNode {
   symbol?: string;
   name: string;
   organism?: string;
+  /** Explicit provider destination for nodes without a verified MoLearn ID. */
+  sourceHref?: string;
   /** true bila node berasal dari fixture demo. */
   isDemo?: boolean;
 }
@@ -310,5 +314,6 @@ export interface RelationshipGraph {
   nodes: RelationshipNode[];
   edges: RelationshipEdge[];
   isDemo: boolean;
+  centerKey?: string;
 }
 

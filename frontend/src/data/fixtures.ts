@@ -143,7 +143,7 @@ export const EXPLORATION_MODULES: ExplorationModuleData[] = [
   {
     module: "ligand",
     title: "2. Ligand",
-    description: "Ions and small molecules that bind to proteins.",
+    description: "Ions and other chemical components observed in deposited structures.",
     state: "unavailable",
     detail:
       "Ligand data is not available for this entity yet.",
@@ -151,7 +151,7 @@ export const EXPLORATION_MODULES: ExplorationModuleData[] = [
   {
     module: "interaction",
     title: "3. Protein Interaction",
-    description: "Network graph of relationships between genes and proteins.",
+    description: "Explore protein associations and supporting evidence from STRING.",
     state: "unavailable",
     detail:
       "Interaction data is not available yet. Only verified cross-references are shown in the Relationship Explorer.",
@@ -159,7 +159,7 @@ export const EXPLORATION_MODULES: ExplorationModuleData[] = [
   {
     module: "sequence",
     title: "4. Sequence",
-    description: "Amino-acid or nucleotide sequence metadata.",
+    description: "View verified protein or reference nucleotide sequences.",
     state: "unavailable",
     detail:
       "The full sequence is not loaded. Sequence length is shown in Advanced Details when available.",

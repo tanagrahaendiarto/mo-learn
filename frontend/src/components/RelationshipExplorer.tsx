@@ -24,7 +24,7 @@ import { PixelCard } from "@/components/PixelCard";
  */
 
 function nodeHref(node: RelationshipNode): string {
-  return `/entity/${node.type}/${encodeURIComponent(node.id)}`;
+  return node.sourceHref ?? `/entity/${node.type}/${encodeURIComponent(node.id)}`;
 }
 
 const NODE_FILL: Record<RelationshipNode["type"], string> = {
@@ -40,27 +40,53 @@ export function RelationshipExplorer({ graph }: { graph: RelationshipGraph }) {
     graph.nodes.find((n) => n.key === selectedKey) ?? null;
 
   const positions = useMemo(() => {
-    const n = graph.nodes.length;
+    const n = graph.nodes.length - (graph.centerKey ? 1 : 0);
     const cx = 160;
     const cy = 160;
     const r = n <= 1 ? 0 : 105;
-    return graph.nodes.map((node, i) => {
-      const angle = (Math.PI * 2 * i) / Math.max(n, 1) - Math.PI / 2;
+    let around = 0;
+    return graph.nodes.map((node) => {
+      if (node.key === graph.centerKey) return { key: node.key, x: cx, y: cy };
+      const angle = (Math.PI * 2 * around++) / Math.max(n, 1) - Math.PI / 2;
       return {
         key: node.key,
         x: cx + r * Math.cos(angle),
         y: cy + r * Math.sin(angle),
       };
     });
-  }, [graph.nodes]);
+  }, [graph.nodes, graph.centerKey]);
 
   const posMap = new Map(positions.map((p) => [p.key, p]));
   const byKey = new Map(graph.nodes.map((n) => [n.key, n]));
+  const selectedDetails = selected && (
+    <PixelCard className="p-md">
+      <div className="mb-sm flex items-center justify-between gap-sm">
+        <h3 className="font-label text-label-sm text-on-surface-variant">Selected node</h3>
+        <EntityBadge type={selected.type} />
+      </div>
+      <h4 className="font-headline text-headline-sm text-on-surface-card">{selected.name}</h4>
+      <p className="font-mono text-mono-sm text-primary [overflow-wrap:anywhere]">
+        {selected.symbol ?? selected.id} • {selected.id}
+      </p>
+      {selected.organism && (
+        <p className="font-body text-body-sm text-on-surface-variant italic">{selected.organism}</p>
+      )}
+      {selected.isDemo && <p className="mt-xs font-label text-label-sm text-on-amber-container">Demo data</p>}
+      <div className="mt-sm">
+        <Link
+          href={nodeHref(selected)}
+          className="inline-flex items-center gap-xs rounded-md border border-outline-subtle bg-primary px-md py-xs font-label text-label-md text-on-primary shadow-card-sm hover:bg-secondary hover:text-on-secondary"
+        >
+          {selected.sourceHref ? "Open on STRING" : `Open ${ENTITY_TYPE_LABELS[selected.type]} Profile`}
+        </Link>
+      </div>
+    </PixelCard>
+  );
 
   return (
     <div className="grid grid-cols-1 gap-lg lg:grid-cols-2">
       {/* Visual map (pointer aid; the list below is the accessible path). */}
-      <PixelCard className="p-md">
+      <PixelCard className={graph.centerKey ? "min-w-0 self-start p-md" : "p-md"}>
         <div className="mb-sm flex items-center justify-between gap-sm">
           <h3 className="font-label text-label-sm text-on-surface-variant">
             Relationship map
@@ -135,9 +161,19 @@ export function RelationshipExplorer({ graph }: { graph: RelationshipGraph }) {
             );
           })}
         </svg>
+        {graph.centerKey && (
+          <label className="flex min-w-0 flex-col gap-xs text-body-sm">
+            Select a protein node
+            <select className="max-w-full rounded-md border border-outline-subtle bg-surface p-sm" value={selectedKey ?? ""}
+              onChange={(event) => setSelectedKey(event.target.value)}>
+              {graph.nodes.map((node) => <option key={node.key} value={node.key}>{node.symbol ?? node.id}</option>)}
+            </select>
+          </label>
+        )}
       </PixelCard>
 
-      <div className="flex flex-col gap-lg">
+      <div className="flex min-w-0 flex-col gap-lg">
+        {graph.centerKey && selectedDetails}
         {/* Textual relationship list (always rendered). */}
         <PixelCard className="p-md">
           <h3 className="mb-sm font-label text-label-sm text-on-surface-variant">
@@ -154,7 +190,7 @@ export function RelationshipExplorer({ graph }: { graph: RelationshipGraph }) {
                     key={e.id}
                     className="flex flex-col gap-xs border-b border-outline-subtle pb-md last:border-b-0 last:pb-0"
                   >
-                    <p className="font-body text-body-sm text-on-surface-card">
+                    <p className="font-body text-body-sm text-on-surface-card [overflow-wrap:anywhere]">
                       <Link
                         href={nodeHref(from)}
                         className="font-label text-label-md text-primary hover:underline"
@@ -187,40 +223,7 @@ export function RelationshipExplorer({ graph }: { graph: RelationshipGraph }) {
         </PixelCard>
 
         {/* Selected node details. */}
-        {selected && (
-          <PixelCard className="p-md">
-            <div className="mb-sm flex items-center justify-between gap-sm">
-              <h3 className="font-label text-label-sm text-on-surface-variant">
-                Selected node
-              </h3>
-              <EntityBadge type={selected.type} />
-            </div>
-            <h4 className="font-headline text-headline-sm text-on-surface-card">
-              {selected.name}
-            </h4>
-            <p className="font-mono text-mono-sm text-primary">
-              {selected.symbol ?? selected.id} • {selected.id}
-            </p>
-            {selected.organism && (
-              <p className="font-body text-body-sm text-on-surface-variant italic">
-                {selected.organism}
-              </p>
-            )}
-            {selected.isDemo && (
-              <p className="mt-xs font-label text-label-sm text-on-amber-container">
-                Demo data
-              </p>
-            )}
-            <div className="mt-sm">
-              <Link
-                href={nodeHref(selected)}
-                className="inline-flex items-center gap-xs rounded-md border border-outline-subtle bg-primary px-md py-xs font-label text-label-md text-on-primary shadow-card-sm hover:bg-secondary hover:text-on-secondary"
-              >
-                Open {ENTITY_TYPE_LABELS[selected.type]} Profile
-              </Link>
-            </div>
-          </PixelCard>
-        )}
+        {!graph.centerKey && selectedDetails}
       </div>
     </div>
   );

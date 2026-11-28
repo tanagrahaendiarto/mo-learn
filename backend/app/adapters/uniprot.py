@@ -227,14 +227,14 @@ def _valid_accession(v) -> bool:
     return isinstance(v, str) and bool(v.strip())
 
 
-def search(client: httpx.Client, query: str, size: int, cursor: str | None):
+def search(client: httpx.Client, query: str, size: int, cursor: str | None, *, deadline: float | None = None):
     """Return (usable_results, next_cursor). Raises ProviderError variants.
     Malformed source data is rejected as a provider error, never masked:
     any result record whose primaryAccession is missing, non-string, or
     blank makes the whole page `UpstreamMalformed` (502) — a genuine empty
     result set (results:[]) is still a valid 'not_found' biological answer.
     Unexpected 4xx (e.g. 403) is a provider error, never a silent empty."""
-    deadline = time.monotonic() + TOTAL_DEADLINE_S
+    deadline = deadline if deadline is not None else time.monotonic() + TOTAL_DEADLINE_S
     resp = _get(client, SEARCH_PATH, {"query": query, "size": size}, cursor, deadline)
     if 400 <= resp.status_code < 500:
         raise UnknownUpstream()
@@ -256,12 +256,12 @@ def search(client: httpx.Client, query: str, size: int, cursor: str | None):
     return results, next_cursor
 
 
-def retrieve(client: httpx.Client, accession: str) -> dict | None:
+def retrieve(client: httpx.Client, accession: str, *, deadline: float | None = None) -> dict | None:
     """Return the record dict, or None when UniProt answers 404 (not found).
     Success responses must carry a valid primaryAccession; anything else is
     malformed upstream, never an empty fabricated identity. Unexpected 4xx
     (e.g. 403 Forbidden) is a provider error."""
-    deadline = time.monotonic() + TOTAL_DEADLINE_S
+    deadline = deadline if deadline is not None else time.monotonic() + TOTAL_DEADLINE_S
     resp = _get(client, f"/uniprotkb/{accession}.json", {}, None, deadline)
     if resp.status_code == 404:
         return None
