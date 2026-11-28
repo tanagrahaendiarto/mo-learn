@@ -1,7 +1,7 @@
 [project]
 name = "molearn-backend"
-version = "0.1.0"
-description = "moLearn MVP backend slice 1: UniProt protein search + profile"
+version = "0.3.0"
+description = "MoLearn biological entity search, profiles, and AI-assisted learning"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",

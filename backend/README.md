@@ -1,50 +1,49 @@
-# moLearn backend — slice 1 (MVP hackathon)
+# MoLearn backend
 
-UniProt protein search + profile, stateless, single provider. Python + FastAPI + httpx, venv via `uv`.
+FastAPI serves NCBI Gene and UniProtKB search and profiles. Slice 3 adds optional,
+reviewer-only AI learning. Python 3.11+ and uv are required.
 
-## Setup (tested on this machine)
-```bash
-cd D:/Projects/MoLearn/backend
-uv sync            # creates .venv, writes uv.lock
+## Local setup
+
+From `backend/`:
+
+```sh
+uv sync --locked
+uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-## Run
-```bash
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+OpenAPI: [JSON](http://127.0.0.1:8000/openapi.json) or [Swagger UI](http://127.0.0.1:8000/docs).
+Liveness: `GET /api/v1/health`. No credentials or AI requests are needed for search or profiles.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/search` | Unified search, entity filter, cursor pagination |
+| GET | `/api/v1/entities/gene/{gene_id}` | NCBI Gene profile |
+| GET | `/api/v1/entities/protein/{accession}` | UniProtKB protein profile |
+| POST | `/api/v1/ai/explain` | On-demand explanation |
+| POST | `/api/v1/ai/ask` | On-demand contextual answer |
+
+See the [Slice 2 contract](../docs/SLICE2-CONTRACT-FINAL.md) for search and profile behavior.
+See the [Slice 3 API and runbook](../docs/SLICE3-AI.md) for AI access, results, and verification.
+
+## Tests
+
+```sh
+uv run --locked pytest -m "not live"
+uv run --locked pytest -m live tests/test_api_live.py
 ```
-- Interactive API docs: `http://127.0.0.1:8000/docs`
-- OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
-- Bound to 127.0.0.1 only (not all interfaces).
 
-## Endpoints (slice 1)
-| Method & path | Purpose |
-|---|---|
-| `GET /api/v1/health` | liveness |
-| `GET /api/v1/search?q=&cursor=&page_size=` | protein search (accession or name), cursor pagination via UniProt Link header |
-| `GET /api/v1/entities/protein/{accession}` | full protein profile |
+The live suite uses a running backend on port 8000 by default. Set `LIVE_BASE_URL` to
+override it. Run this suite separately from live browser regression to avoid provider bursts.
 
-Search notes:
-- `q` required; empty/whitespace → 422. Accession pattern (`[A-Z][A-Z0-9]{5}`, e.g. P04637) → `match_mode=exact_accession`; otherwise plain name is escaped into a quoted `protein_name:"..."` term (backslashes stripped, `"` escaped, max 100 chars) → `match_mode=name`.
-- `page_size` default 10, min 1, max 100. No `page` param.
-- `cursor` is opaque: validated (`^[A-Za-z0-9_-]{1,200}$`), sent only as a query parameter to `https://rest.uniprot.org/uniprotkb/search`, never as a URL. URLs, `*`, and >200-char tokens → 400 `cursor_invalid`.
-- `next_cursor` is read from the UniProt `Link` header `rel="next"` (validated: https, host `rest.uniprot.org`, path `/uniprotkb/search`), **never** from JSON items. `null` only when a successful response has no next link.
-- Changing `q` or `page_size` invalidates the cursor (pagination restarts).
-- Empty result = HTTP 200, `provider_status=not_found` (data empty ≠ error).
+## Production process
 
-Errors (consistent shape `{"status":..., "detail":...}`):
-- provider 5xx/timeout after retry → 502/504 `provider_error`
-- 429 → `provider_error` `rate_limited_by_uniprot` (Retry-After honored only if ≤ 3 s)
-- malformed upstream JSON → 502 `upstream_uniprot_malformed`
+Build with `uv sync --locked --no-dev` from `backend/`. Start with the host's configured port:
 
-## Tests (tested commands)
-```bash
-# offline (fixtures: real UniProt p1/p2 + P04637 payloads; error cases labeled SIMULASI)
-uv run pytest tests/test_offline.py
-# live, explicit — starts the local server first, then hits it end-to-end
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-uv run pytest -m live tests/test_api_live.py
+```sh
+uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
 ```
-Skip/fail on the live marker = integration UNVERIFIED, not broken.
 
-## Stop server
-`Ctrl+C` in the uvicorn terminal, or `taskkill /F /PID <pid>` (find via `netstat -ano | findstr :8000`).
+Set secrets in the hosting environment and serve through HTTPS. Use `/api/v1/health`
+for liveness. Keep AI disabled for the public release until a durable global cost
+limit has been verified.

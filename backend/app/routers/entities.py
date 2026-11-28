@@ -15,12 +15,9 @@ from fastapi.responses import JSONResponse
 from ..adapters.uniprot import (
     ProviderError,
     error_response,
-    get_client,
     is_accession,
-    map_profile,
-    now_iso,
-    retrieve,
 )
+from ..profiles import load_protein
 from ..schemas import ProteinProfile
 
 router = APIRouter(prefix="/api/v1", tags=["entities"])
@@ -77,9 +74,9 @@ def protein_profile(accession: str):
             detail="invalid accession: expected 6 or 10 chars per the official UniProtKB syntax, e.g. P04637 or A0A024RBG1 (see /uniprot.org/help/accession_numbers)",
         )
     try:
-        record = retrieve(get_client(), acc)
+        profile = load_protein(acc)
     except ProviderError as e:
         return error_response(e)
-    if record is None:
+    if profile is None:
         return JSONResponse(status_code=404, content={"status": "not_found", "detail": "protein_not_found"})
-    return map_profile(record, now_iso())
+    return profile
