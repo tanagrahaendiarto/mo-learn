@@ -184,9 +184,9 @@ export function StructureViewer({ record }: { record: StructureRecord }) {
     const sub = plugin.behaviors.interaction.click.subscribe((event) => {
       const loci = event.current?.loci;
       if (!loci) return;
-      void readResidue(loci).then((next) => {
-        if (next) setResidue(next);
-      });
+      void readResidue(loci)
+        .then((next) => { if (next) setResidue(next); })
+        .catch(() => { /* a click must never break the viewer */ });
     });
     return () => sub.unsubscribe();
   }, [status]);
@@ -414,7 +414,13 @@ async function applyStructure(
   return { targets, atoms: structureData.elementCount };
 }
 
+/** Click loci can be a bond, shape or empty loci; only element-loci describe a residue. */
+function isElementLoci(loci: unknown): boolean {
+  return !!loci && (loci as { kind?: string }).kind === "element-loci";
+}
+
 async function readResidue(loci: import("molstar/lib/mol-model/loci").Loci): Promise<ResidueIdentity | null> {
+  if (!isElementLoci(loci)) return null;
   const { StructureElement, StructureProperties } = await import("molstar/lib/mol-model/structure");
   const location = StructureElement.Loci.getFirstLocation(loci as never);
   if (!location) return null;
